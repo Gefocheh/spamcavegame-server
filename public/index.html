@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Mini CaveGame - Online/Offline</title>
+<style>
+body{margin:0;overflow:hidden;background:black;}
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:white;font-size:18px;pointer-events:none;}
+#debug{position:fixed;bottom:10px;left:10px;color:white;font-family:monospace;background:rgba(0,0,0,0.5);padding:5px;z-index:1000;}
+#onlineToggle{position:fixed;top:10px;left:10px;z-index:1000;}
+.nickname{position:absolute;color:white;font-family:monospace;font-size:12px;text-align:center;pointer-events:none;}
+</style>
+</head>
+<body>
+<div id="crosshair">+</div>
+<div id="debug"></div>
+<button id="onlineToggle">Online: OFF</button>
+<input type="text" id="chatInput"
+       placeholder="Enter - чат, /команда"
+       style="
+         position:fixed;
+         bottom:10px;
+         left:50%;
+         transform:translateX(-50%);
+         width:300px;
+         padding:5px;
+         z-index:2000;
+         display:block;
+       ">
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+/* ===== МИР ===== */
+class WorldSystem {
+  constructor(){ this.blocks=new Map(); this.players=new Map(); }
+  key(x,y,z){ return `${Math.floor(x)}|${Math.floor(y)}|${Math.floor(z)}`; }
+  getBlock(x,y,z){ return this.blocks.get(this.key(x,y,z)); }
+  setBlock(x,y,z,type){
+    const k=this.key(x,y,z);
+    if(type===null) this.blocks.delete(k);
+    else this.blocks.set(k,{x:Math.floor(x),y:Math.floor(y),z:Math.floor(z),type});
+  }
+  isSolid(x,y,z){ return this.blocks.has(this.key(x,y,z)); }
+  updatePlayer(id,x,y,z,rotY,rotX,nickname){ this.players.set(id,{x,y,z,rotY,rotX,nickname}); }
+  removePlayer(id){ this.players.delete(id); }
+  saveToJSON(){ return JSON.stringify({blocks:[...this.blocks.values()], players:[...this.players.entries()]}); }
+  loadFromJSON(json){
+    let data;
+    try{ data=JSON.parse(json); } catch(e){ data={blocks:[], players:[]}; }
+    this.blocks.clear(); (Array.isArray(data.blocks)?data.blocks:[]).forEach(b=>this.blocks.set(this.key(b.x,b.y,b.z),b));
+    this.players.clear(); (Array.isArray(data.players)?data.players:[]).forEach(([id,p])=>this.players.set(id,p));
+  }
+  generateDefaultWorld(size=10){
+    for(let x=-size;x<=size;x++)
+      for(let z=-size;z<=size;z++){
+        const h=Math.floor(Math.sin(x/5)*2+Math.cos(z/5)*2);
+        this.setBlock(x,h,z,'grass');
+        this.setBlock(x,h-1,z,'dirt');
+        this.setBlock(x,h-2,z,'stone');
+      }
+  }
+  findTopY(x,z){ for(let y=100;y>=-100;y--) if(this.isSolid(x,y,z)) return y; return 0; }
+}
+
+/* ===== РЕНДЕР ===== */
+class ThreeRenderer{
+  constructor(world){
+    this.world=world; this.meshes=new Map(); this.playerMeshes=new Map();
+    this.nickLabels=new Map();
+    this.initScene(); 
+    this.initColorMaterials();  // создаём цветные материалы (запасной вариант)
+    this.loadTextures();        // пробуем загрузить текстуры из textures3.png
+    this.initLights();
+  }
+  initScene(){
+    this.scene=new THREE.Scene();
+    this.scene.background=new THREE.Color(0x87ceeb);
+    this.renderer=new THREE.WebGLRenderer(); this.renderer.setSize(innerWidth,innerHeight);
+    document.body.appendChild(this.renderer.domElement);
+    this.camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,100);
+    this.yaw=new THREE.Object3D(); this.pitch=new THREE.Object3D();
+    this.yaw.add(this.pitch); this.pitch.position.y=1.6; this.pitch.add(this.camera);
+    this.scene.add(this.yaw);
+    this.geo=new THREE.BoxGeometry(1,1,1);
+  }
+  // цветные материалы (используются, если нет textures3.png)
+  initColorMaterials(){
+    const colorTexture=(c)=>{ const canvas=document.createElement('canvas'); canvas.width=canvas.height=16;
+      const ctx=canvas.getContext('2d'); ctx.fillStyle=c; ctx.fillRect(0,0,16,16);
+      const t=new THREE.CanvasTexture(canvas); t.magFilter=t.minFilter=THREE.NearestFilter; return t;
+    };
+    this.materials={
+      grass:new Array(6).fill(new THREE.MeshLambertMaterial({map:colorTexture('#3cb043')})),
+      dirt:new Array(6).fill(new THREE.MeshLambertMaterial({map:colorTexture('#7a4a2e')})),
+      stone:new Array(6).fill(new THREE.MeshLambertMaterial({map:colorTexture('#888888')}))
+    };
+  }
+  // загрузка текстурного спрайта (48x16, по 16x16 на блок)
+  loadTextures(){
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      console.log('textures3.png loaded, applying textures');
+      // функция вырезания части изображения в CanvasTexture
+      const createTextureFromRegion = (sx, sy, sw, sh) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = sw;
+        canvas.height = sh;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = tex.minFilter = THREE.NearestFilter;
+        return tex;
+      };
+      // координаты в спрайте: grass (0,0), dirt (16,0), stone (32,0)
+      const grassTex = createTextureFromRegion(0, 0, 16, 16);
+      const dirtTex = createTextureFromRegion(16, 0, 16, 16);
+      const stoneTex = createTextureFromRegion(32, 0, 16, 16);
+
+      // создаём материалы (для всех сторон одинаковые)
+      const grassMat = new THREE.MeshLambertMaterial({ map: grassTex });
+      const dirtMat = new THREE.MeshLambertMaterial({ map: dirtTex });
+      const stoneMat = new THREE.MeshLambertMaterial({ map: stoneTex });
+
+      this.materials = {
+        grass: new Array(6).fill(grassMat),
+        dirt: new Array(6).fill(dirtMat),
+        stone: new Array(6).fill(stoneMat)
+      };
+
+      // обновляем материалы уже существующих блоков
+      this.meshes.forEach((mesh) => {
+        const type = mesh.userData.type;
+        mesh.material = this.materials[type];
+      });
+    };
+    img.onerror = () => {
+      console.log('textures3.png not found, using default colors');
+      // ничего не делаем, остаются цветные материалы
+    };
+    img.src = 'https://gefocheh.nekoweb.org/textures3.png';
+  }
+  initLights(){ this.scene.add(new THREE.AmbientLight(0xffffff,0.4));
+    const sun=new THREE.DirectionalLight(0xffffff,1); sun.position.set(10,20,10); this.scene.add(sun); }
+  syncBlocks(){
+    const camPos=this.yaw.position; const renderDist=12;
+    this.meshes.forEach((m,k)=>{ if(!this.world.getBlock(m.userData.x,m.userData.y,m.userData.z)){ this.scene.remove(m); this.meshes.delete(k);} });
+    this.world.blocks.forEach(block=>{
+      if(Math.abs(block.x-camPos.x)>renderDist||Math.abs(block.y-camPos.y)>renderDist||Math.abs(block.z-camPos.z)>renderDist) return;
+      const key=this.world.key(block.x,block.y,block.z);
+      if(!this.meshes.has(key)){
+        const m=new THREE.Mesh(this.geo,this.materials[block.type]); m.position.set(block.x+0.5,block.y+0.5,block.z+0.5);
+        m.userData={...block}; this.scene.add(m); this.meshes.set(key,m);
+      }
+    });
+  }
+  createPlayerMesh(id,x,y,z,nickname){
+    const g=new THREE.Group();
+    const b=new THREE.BoxGeometry(0.6,1.8,0.6); const bm=new THREE.MeshLambertMaterial({color:Math.random()*0xffffff});
+    const body=new THREE.Mesh(b,bm); body.position.y=0.9; g.add(body);
+    const h=new THREE.BoxGeometry(0.4,0.4,0.4); const hm=new THREE.MeshLambertMaterial({color:0xffaa88});
+    // луч взгляда
+    const rayGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 1.6, 0),
+      new THREE.Vector3(0, 1.6, -3)
+    ]);
+    const rayMat = new THREE.LineBasicMaterial({ color: 0xff0000 });
+    const ray = new THREE.Line(rayGeo, rayMat);
+    ray.name = 'lookRay';
+    g.add(ray);
+    const head=new THREE.Mesh(h,hm); head.position.y=2.0; g.add(head);
+    g.position.set(x,y,z); g.userData={id,nickname};
+    // ник
+    const div=document.createElement('div'); div.className='nickname'; div.innerText=nickname; document.body.appendChild(div);
+    this.nickLabels.set(id,div);
+    return g;
+  }
+  syncPlayers(){
+    const cam=this.yaw.position;
+    this.playerMeshes.forEach((m,id)=>{ if(!this.world.players.has(id)){ this.scene.remove(m); if(this.nickLabels.has(id)){ document.body.removeChild(this.nickLabels.get(id)); this.nickLabels.delete(id);} this.playerMeshes.delete(id);} });
+    this.world.players.forEach((p,id)=>{
+      let m=this.playerMeshes.get(id);
+      if(!m){ m=this.createPlayerMesh(id,p.x,p.y,p.z,p.nickname); this.scene.add(m); this.playerMeshes.set(id,m);}
+      else{ m.position.set(p.x,p.y,p.z); m.rotation.y = p.rotationY || 0; const ray = m.getObjectByName('lookRay');
+        if(ray){ ray.rotation.x = p.rotationX || 0; }
+      }
+      // обновляем ник над головой
+      if(this.nickLabels.has(id)){
+        const label=this.nickLabels.get(id);
+        const pos=new THREE.Vector3(p.x,p.y+2,p.z);
+        pos.project(this.camera);
+        const x=(pos.x*0.5+0.5)*window.innerWidth;
+        const y=(-pos.y*0.5+0.5)*window.innerHeight;
+        label.style.left=x+'px'; label.style.top=y+'px';
+      }
+    });
+  }
+  setCameraPos(x,y,z){ this.yaw.position.set(x,y,z); }
+  rotateCamera(yawD,pitchD){ this.yaw.rotation.y+=yawD; this.pitch.rotation.x=Math.max(-Math.PI/2,Math.min(Math.PI/2,this.pitch.rotation.x+pitchD)); }
+  getCamDir(){ const dir=new THREE.Vector3(); this.camera.getWorldDirection(dir); return dir; }
+  render(){ this.renderer.render(this.scene,this.camera); }
+}
+
+/* ===== ЛОКАЛЬНЫЙ ИГРОК ===== */
+class LocalPlayer{
+  constructor(world,renderer){
+    this.world=world; this.renderer=renderer; this.x=0; this.y=3; this.z=5; this.vy=0; this.w=0.6; this.h=1.7; this.d=0.6; this.onGround=false;
+    this.keys={}; this.fallThreshold=-10; this.initControls();
+  }
+  initControls(){
+    onkeydown=e=>this.keys[e.code]=true; onkeyup=e=>this.keys[e.code]=false;
+    onclick=()=>document.body.requestPointerLock();
+    onmousemove=e=>{ if(document.pointerLockElement!==document.body) return; this.renderer.rotateCamera(-e.movementX*0.002,-e.movementY*0.002); };
+  }
+  isSolid(x,y,z){ return this.world.isSolid(Math.floor(x),Math.floor(y),Math.floor(z)); }
+  collide(pos){ const w=this.w/2,h=this.h,d=this.d/2; for(let dx of [-w,w]) for(let dz of [-d,d]) for(let dy of [0,h*0.9]) if(this.isSolid(pos.x+dx,pos.y+dy,pos.z+dz)) return true; return false; }
+  update(){
+    const speed=0.08; const dir=this.renderer.getCamDir(); dir.y=0; dir.normalize();
+    const right=new THREE.Vector3().crossVectors(dir,new THREE.Vector3(0,1,0));
+    let nx=this.x,nz=this.z;
+    if(this.keys.KeyW){ nx+=dir.x*speed; nz+=dir.z*speed; }
+    if(this.keys.KeyS){ nx-=dir.x*speed; nz-=dir.z*speed; }
+    if(this.keys.KeyA){ nx-=right.x*speed; nz-=right.z*speed; }
+    if(this.keys.KeyD){ nx+=right.x*speed; nz+=right.z*speed; }
+    if(!this.collide({x:nx,y:this.y,z:nz})){ this.x=nx; this.z=nz; }
+
+    this.vy-=0.01; let ny=this.y+this.vy;
+    if(this.vy>0){ if(!this.collide({x:this.x,y:ny+0.001,z:this.z})){ this.y=ny;} else this.vy=0;}
+    else{ if(!this.collide({x:this.x,y:ny,z:this.z})){ this.y=ny; this.onGround=false;} else {this.onGround=true; this.vy=0; this.y=Math.floor(ny)+1; }}
+    if(this.keys.Space && this.onGround){ this.vy=0.22; this.onGround=false; }
+    if(this.y<this.fallThreshold){ this.y=this.world.findTopY(this.x,this.z)+1.6; this.vy=0; }
+    this.renderer.setCameraPos(this.x,this.y,this.z);
+    return {x:this.x,y:this.y,z:this.z,rotationY:this.renderer.yaw.rotation.y,rotationX:this.renderer.pitch.rotation.x};
+  }
+  getTargetBlock(){ const ray=new THREE.Raycaster(); ray.setFromCamera({x:0,y:0},this.renderer.camera); const hits=ray.intersectObjects([...this.renderer.meshes.values()]); return hits.length&&hits[0].distance<=5?hits[0]:null; }
+}
+
+/* ===== МУЛЬТИПЛЕЕР ===== */
+class MultiplayerManager{
+  constructor(world,renderer,localPlayer){
+    this.lastSend = 0;
+    this.sendInterval = 50; // мс = 20 раз в секунду
+    this.world=world; this.renderer=renderer; this.localPlayer=localPlayer;
+    this.online=false; this.playerId='local_'+Math.random().toString(36).substr(2,6);
+    this.socket=null; this.toggleButton=document.getElementById('onlineToggle');
+    this.toggleButton.onclick=()=>this.setOnline(!this.online);
+  }
+  setOnline(val){
+    this.online=val; this.toggleButton.innerText=`Online: ${val?'ON':'OFF'}`;
+    if(val) this.connect('ws://26.244.5.194:8080'); else if(this.socket){ this.socket.close(); this.socket=null; }
+  }
+  connect(url){
+    this.socket=new WebSocket(url);
+    this.socket.onopen=()=>console.log('Connected to server');
+    this.socket.onmessage=(e)=>{
+      const data=JSON.parse(e.data);
+      if(data.type === 'worldState'){
+        this.world.blocks.clear();
+        data.blocks.forEach(b=>{ this.world.setBlock(b.x,b.y,b.z,b.type); });
+        this.world.players.clear();
+        data.players.forEach(([id,p])=>{ this.world.updatePlayer(id,p.x,p.y,p.z,p.rotationY,p.rotationX,p.nickname); });
+        this.playerId = data.playerId;
+      }
+      else if(data.type==='playerMoved'){
+        if(data.playerId === this.playerId) return;
+        this.world.updatePlayer(data.playerId,data.x,data.y,data.z,data.rotationY,data.rotationX,data.nickname);
+      }
+      else if(data.type === 'playerJoined'){
+        if(data.playerId === this.playerId) return;
+        this.world.updatePlayer(data.playerId,data.x,data.y,data.z,data.rotationY,data.rotationX,data.nickname);
+      }
+      else if(data.type==='playerLeft') this.world.removePlayer(data.playerId);
+      else if(data.type==='blockPlaced') this.world.setBlock(data.x,data.y,data.z,data.blockType);
+      else if(data.type==='blockBroken') this.world.setBlock(data.x,data.y,data.z,null);
+	
+      else if(data.type === 'chat') {
+      console.log(`[CHAT] ${data.playerId}: ${data.text}`);
+    }};
+    this.socket.onclose=()=>console.log('Disconnected from server');
+  }
+  sendPlayerUpdate(pos){ if(this.online && this.socket && this.socket.readyState===WebSocket.OPEN){ this.socket.send(JSON.stringify({type:'playerUpdate',playerId:this.playerId,...pos})); } }
+  sendBlockPlace(x,y,z,type){ if(this.online && this.socket) this.socket.send(JSON.stringify({type:'blockPlace',playerId:this.playerId,x,y,z,blockType:type})); }
+  sendBlockBreak(x,y,z){ if(this.online && this.socket) this.socket.send(JSON.stringify({type:'blockBreak',playerId:this.playerId,x,y,z})); }
+  update(){
+    const pos = this.localPlayer.update();
+    if(this.online){
+      const now = performance.now();
+      if(now - this.lastSend >= this.sendInterval){
+        this.lastSend = now;
+        this.sendPlayerUpdate(pos);
+      }
+    }
+  }
+}
+
+/* ===== ИНИЦИАЛИЗАЦИЯ ===== */
+const world=new WorldSystem();
+const renderer=new ThreeRenderer(world);
+const localPlayer=new LocalPlayer(world,renderer);
+const multiplayer=new MultiplayerManager(world,renderer,localPlayer);
+
+const saved = localStorage.getItem('savedWorld');
+if(saved) world.loadFromJSON(saved);
+if(!multiplayer.online && world.blocks.size===0){
+  world.generateDefaultWorld(10);
+}
+
+function gameLoop(){
+  requestAnimationFrame(gameLoop);
+  multiplayer.update();
+  renderer.syncBlocks();
+  renderer.syncPlayers();
+  renderer.render();
+  document.getElementById('debug').innerHTML=
+    `Pos: ${localPlayer.x.toFixed(2)}, ${localPlayer.y.toFixed(2)}, ${localPlayer.z.toFixed(2)}<br>`+
+    `Blocks: ${world.blocks.size}<br>Players: ${world.players.size}`;
+}
+gameLoop();
+
+onmousedown=e=>{
+  const hit=localPlayer.getTargetBlock(); if(!hit) return;
+  const b=hit.object.userData; const n=hit.face.normal;
+  if(e.button===0){ world.setBlock(b.x,b.y,b.z,null); multiplayer.sendBlockBreak(b.x,b.y,b.z); }
+  if(e.button===2){
+    const x=b.x+n.x; const y=b.y+n.y; const z=b.z+n.z;
+    if(!world.isSolid(x,y,z) && !localPlayer.collide({x:x+0.5,y:y+0.5,z:z+0.5})){
+      world.setBlock(x,y,z,'stone'); multiplayer.sendBlockPlace(x,y,z,'stone');
+    }
+  }
+};
+// API для модов
+window.GameAPI = {
+  world,
+  renderer,
+  localPlayer,
+  multiplayer,
+  THREE
+};
+// Функция загрузки мода
+function loadMod(url){
+  const s = document.createElement('script');
+  s.src = url;
+  document.body.appendChild(s);
+}
+const chatInput = document.getElementById('chatInput');
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Enter') {
+    if (chatInput.style.display === 'none') {
+      chatInput.style.display = 'block';
+      chatInput.focus();
+      document.exitPointerLock();
+    } else {
+      const text = chatInput.value.trim();
+      if (text && multiplayer.online && multiplayer.socket) {
+        multiplayer.socket.send(JSON.stringify({
+          type: 'chat',
+          text
+        }));
+      }
+      chatInput.value = '';
+      chatInput.style.display = 'none';
+      document.body.requestPointerLock();
+    }
+  }
+});
+oncontextmenu=e=>e.preventDefault();
+</script>
+</body>
+</html>
