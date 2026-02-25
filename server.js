@@ -4,7 +4,7 @@ const path = require('path'); // добавлен недостающий имп�
 
 /* ================= CONFIG ================= */
 
-const CLIENT_VERSION = '1.0.0';
+const CLIENT_VERSION = '0.3.0';
 const SAVE_FILE = 'world.json';
 
 const MAX_PLAYERS = 20;
@@ -339,7 +339,8 @@ const api = new PluginAPI(world);
 const plugins = new PluginManager(api);
 plugins.loadAll();
 
-const wss = new WebSocket.Server({ port: 8080 });
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ port: PORT });
 world.wss = wss;
 api.attachWSS(wss);
 
@@ -454,4 +455,5 @@ wss.on('connection', ws => {
 setInterval(() => {
   api.emit('tick', {});
   world.save();
+
 }, 60000);
