@@ -9,5 +9,5 @@ Simple multiplayer voxel server written in Node.js.
 - World save/load
 
 ## Run
-npm install
-node server.js
+- npm install
+- node server.js
