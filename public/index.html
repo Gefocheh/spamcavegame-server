@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Mini CaveGame - Online/Offline</title>
+<title>spamCaveGame</title>
 <style>
 body{margin:0;overflow:hidden;background:black;}
 #crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:white;font-size:18px;pointer-events:none;}
@@ -14,10 +14,29 @@ body{margin:0;overflow:hidden;background:black;}
 <body>
 <div id="crosshair">+</div>
 <div id="debug"></div>
-<button id="onlineToggle">Online: OFF</button>
+<button id="serverMenuToggle" style="position:fixed;top:10px;left:100px;z-index:1000;background:rgba(0,0,0,0.5);border:2px solid gray;color:white;font-family:Trebuchet MS;">Серверы</button>
+<div id="serverMenu" style="
+  display:none;
+  position:fixed;
+  top:40px;
+  left:100px;
+  background:rgba(0.1,0.1,0,0.3);
+  padding:5px;
+  border:2px solid gray;
+  z-index:1000;
+  max-width:250px;
+  color:white;
+  font-family:Trebuchet MS;
+">
+  <div id="serverList"></div>
+  <input type="text" id="newServerInput" placeholder="ws://или wss://" style="width:97%;margin-top:5px;border:2px solid gray;background:rgba(0,0,0,0.3);color:white;font-family:Trebuchet MS;">
+  <button id="addServerBtn" style="width:100%;margin-top:3px;color:white;background:rgba(0,0,0,0.5);font-family:Trebuchet MS;">Добавить сервер</button>
+</div>
+<button id="onlineToggle" style="background:rgba(0,0,0,0.5);border:2px solid gray;color:white;font-family:Trebuchet MS;">Online: OFF</button>
 <input type="text" id="chatInput"
        placeholder="Enter - чат, /команда"
        style="
+	     font-family:Trebuchet MS;
          position:fixed;
          bottom:10px;
          left:50%;
@@ -26,10 +45,9 @@ body{margin:0;overflow:hidden;background:black;}
          padding:5px;
          z-index:2000;
          display:block;
+		 background:rgba(0,0,0,0.5);
+		 border:2px solid gray;
        ">
-<input type="text" id="serverInput"
-       placeholder="wss://your-server.up.railway.app"
-       style="position:fixed;top:40px;left:10px;z-index:1000;width:260px;">
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
 /* ===== МИР ===== */
@@ -236,7 +254,59 @@ class LocalPlayer{
   }
   getTargetBlock(){ const ray=new THREE.Raycaster(); ray.setFromCamera({x:0,y:0},this.renderer.camera); const hits=ray.intersectObjects([...this.renderer.meshes.values()]); return hits.length&&hits[0].distance<=5?hits[0]:null; }
 }
+const serverMenuToggle = document.getElementById('serverMenuToggle');
+const serverMenu = document.getElementById('serverMenu');
+const serverListDiv = document.getElementById('serverList');
+const serverInput = document.getElementById('newServerInput');
+const addServerBtn = document.getElementById('addServerBtn');
 
+const DEFAULT_SERVER = 'wss://spamcavegame-server.onrender.com';
+let servers = JSON.parse(localStorage.getItem('servers') || '[]');
+
+// Если пусто, добавляем сервер по умолчанию
+if(!servers.includes(DEFAULT_SERVER)) servers.unshift(DEFAULT_SERVER);
+
+// Подставляем в input текущий сервер
+serverInput.value = servers[0];
+
+function renderServerList() {
+  serverListDiv.innerHTML = '';
+  servers.forEach((url, i) => {
+    const div = document.createElement('div');
+    div.innerText = url;
+    div.style.cursor = 'pointer';
+    div.style.padding = '2px 0';
+    div.style.borderBottom = '1px solid #555';
+    div.onclick = () => {
+      serverInput.value = url;
+      serverMenu.style.display = 'none';
+      if(multiplayer.online){
+        multiplayer.setOnline(false);
+        setTimeout(()=>multiplayer.setOnline(true),100);
+      } else {
+        multiplayer.setOnline(true);
+      }
+    };
+    serverListDiv.appendChild(div);
+  });
+}
+
+// Добавление нового сервера
+addServerBtn.onclick = () => {
+  const url = newServerInput.value.trim();
+  if(url && !servers.includes(url)){
+    servers.push(url);
+    localStorage.setItem('servers', JSON.stringify(servers));
+    newServerInput.value = '';
+    renderServerList();
+  }
+};
+
+serverMenuToggle.onclick = () => {
+  serverMenu.style.display = serverMenu.style.display === 'none' ? 'block' : 'none';
+};
+
+renderServerList();
 /* ===== МУЛЬТИПЛЕЕР ===== */
 class MultiplayerManager{
   constructor(world,renderer,localPlayer){
@@ -248,23 +318,27 @@ class MultiplayerManager{
     this.toggleButton.onclick=()=>this.setOnline(!this.online);
   }
   setOnline(val){
-    this.online=val; this.toggleButton.innerText=`Online: ${val?'ON':'OFF'}`;
-    if(val){
-  const saved = localStorage.getItem('serverUrl');
-  const input = document.getElementById('serverInput');
-  const url = input.value.trim() || saved;
+  this.online = val;
+  this.toggleButton.innerText = `Online: ${val?'ON':'OFF'}`;
 
-  if(!url){
-    alert("Введите адрес сервера");
-    this.online = false;
-    this.toggleButton.innerText = "Online: OFF";
-    return;
-  }
+  if(val){
 
-  localStorage.setItem('serverUrl', url);
-  this.connect(url);
-}; else if(this.socket){ this.socket.close(); this.socket=null; }
+    let url = serverInput.value.trim();
+
+    if(!url){
+      url = DEFAULT_SERVER;
+      serverInput.value = url;
+    }
+
+    console.log("Connecting to:", url);
+
+    this.connect(url);
+
+  } else if(this.socket){
+    this.socket.close();
+    this.socket = null;
   }
+}
   connect(url){
     this.socket=new WebSocket(url);
     this.socket.onopen=()=>console.log('Connected to server');
