@@ -27,6 +27,9 @@ body{margin:0;overflow:hidden;background:black;}
          z-index:2000;
          display:block;
        ">
+<input type="text" id="serverInput"
+       placeholder="wss://your-server.up.railway.app"
+       style="position:fixed;top:40px;left:10px;z-index:1000;width:260px;">
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
 /* ===== МИР ===== */
@@ -246,7 +249,21 @@ class MultiplayerManager{
   }
   setOnline(val){
     this.online=val; this.toggleButton.innerText=`Online: ${val?'ON':'OFF'}`;
-    if(val) this.connect('ws://26.244.5.194:8080'); else if(this.socket){ this.socket.close(); this.socket=null; }
+    if(val){
+  const saved = localStorage.getItem('serverUrl');
+  const input = document.getElementById('serverInput');
+  const url = input.value.trim() || saved;
+
+  if(!url){
+    alert("Введите адрес сервера");
+    this.online = false;
+    this.toggleButton.innerText = "Online: OFF";
+    return;
+  }
+
+  localStorage.setItem('serverUrl', url);
+  this.connect(url);
+}; else if(this.socket){ this.socket.close(); this.socket=null; }
   }
   connect(url){
     this.socket=new WebSocket(url);
