@@ -11,3 +11,5 @@ Simple multiplayer voxel server written in Node.js.
 ## Run
 - npm install
 - node server.js
+
+→→→→!!!!REQUIRES NODE.JS←!!!←←←←←←
