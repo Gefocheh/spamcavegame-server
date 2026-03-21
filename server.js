@@ -1,13 +1,13 @@
 const WebSocket = require('ws');
 const fs = require('fs');
-const path = require('path'); // добавлен недостающий импорт
+const path = require('path'); 
 
 /* ================= CONFIG ================= */
 
 const CLIENT_VERSION = '0.3.0';
 const SAVE_FILE = 'world.json';
 
-const MAX_PLAYERS = 20;
+const MAX_PLAYERS = 19;
 const MAX_BLOCKS = 200_000;
 const MAX_MOVE_DIST = 10;
 const BLOCK_INTERACT_DIST = 6;
