@@ -40,7 +40,12 @@ function rateLimit(ws) {
   ws._rate.count++;
   return ws._rate.count <= MSG_LIMIT;
 }
-
+console.log('=== ENV CHECK ===');
+console.log('DB_CLIENT:', process.env.DB_CLIENT);
+console.log('DATABASE_URL exists?', !!process.env.DATABASE_URL);
+console.log('INTERNAL_DATABASE_URL exists?', !!process.env.INTERNAL_DATABASE_URL);
+console.log('DB_HOST:', process.env.DB_HOST);
+console.log('=== END ENV CHECK ===');
 /* ================= WORLD ================= */
 
 class ServerWorld {
