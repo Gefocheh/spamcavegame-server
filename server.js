@@ -74,8 +74,8 @@ class ServerWorld {
 
   // Изменённый метод generateDefaultWorld
 generateDefaultWorld() {
-    for (let x = -10; x <= 10; x++)
-        for (let z = -10; z <= 10; z++) {
+    for (let x = -70; x <= 70; x++)
+        for (let z = -70; z <= 70; z++) {
             this.blocks.set(this.key(x, -2, z), { x, y: -2, z, type: 'stone' });
             this.blocks.set(this.key(x, -1, z), { x, y: -1, z, type: 'dirt' });
             this.blocks.set(this.key(x, 0, z), { x, y: 0, z, type: 'grass' });
