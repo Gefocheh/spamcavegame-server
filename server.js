@@ -63,7 +63,7 @@ class ServerWorld {
       this.blocks.set(this.key(r.x, r.y, r.z), r);
     }
     if (this.blocks.size === 0) this.generateDefaultWorld();
-  }  else  console.log("world found, not generating");}
+  }
 
   async save() {
     await db('blocks').del();
