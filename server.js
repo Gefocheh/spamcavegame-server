@@ -58,6 +58,7 @@ class ServerWorld {
   key(x, y, z) { return `${x}|${y}|${z}`; }
 
   async load() {
+    this.blocks.clear(); // ВАЖНО
     const rows = await db('blocks');
     for (const r of rows) {
       this.blocks.set(this.key(r.x, r.y, r.z), r);
