@@ -6,7 +6,7 @@ const { db, initDB } = require('./db');
 
 const CLIENT_VERSION = '1.0.0';
 
-const MAX_PLAYERS = 20;
+const MAX_PLAYERS = 19;
 const MAX_BLOCKS = 200000;
 
 const MAX_MOVE_DIST = 10;
@@ -74,6 +74,7 @@ class ServerWorld {
 
   // Изменённый метод generateDefaultWorld
 generateDefaultWorld() {
+    console.log("generating default world")
     for (let x = -70; x <= 70; x++)
         for (let z = -70; z <= 70; z++) {
             this.blocks.set(this.key(x, -2, z), { x, y: -2, z, type: 'stone' });
