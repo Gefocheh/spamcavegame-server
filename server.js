@@ -19,7 +19,6 @@ const MSG_INTERVAL = 1000;
 
 const isNumber = n => typeof n === 'number' && Number.isFinite(n);
 
-// ИСПРАВЛЕНО: (a.x-a.x) -> (a.x-b.x)
 const dist = (a, b) =>
   Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
 
@@ -58,7 +57,7 @@ class ServerWorld {
   key(x, y, z) { return `${x}|${y}|${z}`; }
 
   async load() {
-    this.blocks.clear(); // ВАЖНО
+    //this.blocks.clear(); // ВАЖНО
     const rows = await db('blocks');
     for (const r of rows) {
       this.blocks.set(this.key(r.x, r.y, r.z), r);
@@ -73,11 +72,11 @@ class ServerWorld {
     }
   }
 
-  // Изменённый метод generateDefaultWorld
+
 generateDefaultWorld() {
     console.log("generating default world")
-    for (let x = -70; x <= 70; x++)
-        for (let z = -70; z <= 70; z++) {
+    for (let x = -40; x <= 40; x++)
+        for (let z = -40; z <= 40; z++) {
             this.blocks.set(this.key(x, -2, z), { x, y: -2, z, type: 'stone' });
             this.blocks.set(this.key(x, -1, z), { x, y: -1, z, type: 'dirt' });
             this.blocks.set(this.key(x, 0, z), { x, y: 0, z, type: 'grass' });
