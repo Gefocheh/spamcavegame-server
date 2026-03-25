@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>spamCaveGame-bdea</title>
+<link rel="icon" type="image/png" href="spamcavegame.png">
+<style>
+
+body{margin:0;overflow:hidden;background:black;}
+#loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(10,10,10,1); /* фон */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid #333;
+  border-top: 5px solid #ccc;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+.loading-text {
+  font-family: Trebuchet MS;
+  font-size: 16px;
+  color: #ccc;
+}
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:white;font-size:18px;pointer-events:none;z-index:1000;}
+#debug{position:fixed;bottom:10px;left:10px;color:white;font-family:"Trebuchet MS";background:rgba(0,0,0,0.5);padding:5px;z-index:1000;}
+#onlineToggle{position:fixed;top:10px;left:10px;z-index:1000;}
+.nickname{position:absolute;color:white;font-family:"Trebuchet MS";font-size:12px;text-align:center;pointer-events:none;z-index:500;}
+/* Слайдер дальности */
+.chunk-slider {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0,0,0,0.5);
+    border: 2px solid gray;
+    padding: 4px 8px;
+    color: white;
+    font-family: "Trebuchet MS";
+    font-size: 12px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.chunk-slider input {
+    width: 120px;
+    cursor: pointer;
+}
+/* Чат панель */
+.chat-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 280px;
+    background: rgba(0,0,0,0.7);
+    border: 2px solid gray;
+    font-family: "Trebuchet MS";
+    z-index: 1200;
+    display: flex;
+    flex-direction: column;
+    pointer-events: auto;
+}
+.chat-messages {
+    height: 200px;
+    overflow-y: auto;
+    padding: 8px;
+    color: #eee;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.chat-messages div {
+    word-wrap: break-word;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+    padding-bottom: 2px;
+}
+.chat-input-area {
+    display: flex;
+    border-top: 1px solid gray;
+    padding: 5px;
+    gap: 5px;
+}
+.chat-input-area input {
+    flex: 1;
+    background: #222;
+    border: 1px solid #888;
+    color: white;
+    padding: 5px;
+    font-family: Trebuchet MS;
+    outline: none;
+}
+.chat-input-area button {
+    background: #444;
+    border: 1px solid #888;
+    color: white;
+    cursor: pointer;
+}
+/* Индикатор выбранного блока */
+#blockSelector {
+    position: fixed;
+    bottom: 10px;
+    left: 110px;
+    background: rgba(0,0,0,0.6);
+    border: 2px solid gray;
+    padding: 5px 10px;
+    color: white;
+    font-family: monospace;
+    font-size: 14px;
+    z-index: 1000;
+    pointer-events: none;
+}
+</style>
+</head>
+<body>
+<div id="loader">
+  <div class="loader-content">
+    <div class="spinner"></div>
+    <p class="loading-text">Loading...</p>
+  </div>
+</div>
+<div id="crosshair">+</div>
+<div id="debug"></div>
+<button id="serverMenuToggle" style="position:fixed;top:10px;left:100px;z-index:1000;background:rgba(0,0,0,0.5);border:2px solid gray;color:white;font-family:Trebuchet MS;">Servers</button>
+<div id="serverMenu" style="display:none;position:fixed;top:40px;left:100px;background:rgba(0.1,0.1,0,0.3);padding:5px;border:2px solid gray;z-index:1000;max-width:250px;color:white;font-family:Trebuchet MS;">
+    <div id="serverList"></div>
+    <input type="text" id="newServerInput" placeholder="ws://или wss://" style="width:97%;margin-top:5px;border:2px solid gray;background:rgba(0,0,0,0.3);color:white;font-family:Trebuchet MS;">
+    <button id="addServerBtn" style="width:100%;margin-top:3px;color:white;background:rgba(0,0,0,0.5);font-family:Trebuchet MS;">Add server</button>
+</div>
+<button id="onlineToggle" style="background:rgba(0,0,0,0.5);border:2px solid gray;color:white;font-family:Trebuchet MS;">Online: OFF</button>
+<div class="chunk-slider">
+    <span>Render distance</span>
+    <input type="range" id="chunkDistSlider" min="3" max="20" step="1" value="12">
+    <span id="distValue">12</span>
+</div>
+<div class="chat-panel" id="chatPanel">
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-area">
+        <input type="text" id="chatInput" placeholder="Message..." autocomplete="off">
+        <button id="chatSend">Send</button>
+    </div>
+</div>
+<div id="blockSelector">Block: stone</div>
+<script>
+window.addEventListener("load", function() {
+  document.getElementById("loader").style.display = "none";
+});
+</script>
+<script src="three.min.js"></script>
+<script>
+// ====================== ОПТИМИЗИРОВАННЫЙ ЧАНК-РЕНДЕР ======================
+const CHUNK_SIZE = 16;
+const CHUNK_HEIGHT_MIN = -16;
+const CHUNK_HEIGHT_MAX = 64;
+
+function getChunkCoord(coord) { return Math.floor(coord / CHUNK_SIZE); }
+function getChunkKey(cx, cz) { return `${cx}|${cz}`; }
+
+class OptimizedRenderer {
+    constructor(world) {
+        this.world = world;
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x87ceeb);
+        this.renderer = new THREE.WebGLRenderer();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(this.renderer.domElement);
+
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 200);
+        this.yaw = new THREE.Object3D();
+        this.pitch = new THREE.Object3D();
+        this.yaw.add(this.pitch);
+        this.pitch.position.y = 1.6;
+        this.pitch.add(this.camera);
+        this.scene.add(this.yaw);
+
+        this.chunkMeshes = new Map();
+        this.activeChunks = new Set();
+        this.renderDist = 3;
+
+        this.initMaterials();
+        this.initLights();
+        this.loadTextures();
+
+        window.addEventListener('resize', () => {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    }
+
+    initMaterials() {
+        const colorTex = (c) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 16;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = c;
+            ctx.fillRect(0,0,16,16);
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.magFilter = tex.minFilter = THREE.NearestFilter;
+            return tex;
+        };
+        this.materials = {
+            grass: new THREE.MeshLambertMaterial({ map: colorTex('#3cb043'), vertexColors: true  }),
+            dirt:  new THREE.MeshLambertMaterial({ map: colorTex('#7a4a2e'), vertexColors: true  }),
+            stone: new THREE.MeshLambertMaterial({ map: colorTex('#888888'), vertexColors: true  })
+        };
+    }
+
+    loadTextures() {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            const createTex = (sx, sy) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 16; canvas.height = 16;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, sx, sy, 16, 16, 0, 0, 16, 16);
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.magFilter = tex.minFilter = THREE.NearestFilter;
+                return tex;
+            };
+            this.materials.grass = new THREE.MeshLambertMaterial({ map: createTex(0,0), vertexColors: true });
+            this.materials.dirt  = new THREE.MeshLambertMaterial({ map: createTex(16,0), vertexColors: true });
+            this.materials.stone = new THREE.MeshLambertMaterial({ map: createTex(32,0), vertexColors: true });
+            for (let chunk of this.chunkMeshes.values()) {
+                if (chunk.grassMesh) chunk.grassMesh.material = this.materials.grass;
+                if (chunk.dirtMesh)  chunk.dirtMesh.material  = this.materials.dirt;
+                if (chunk.stoneMesh) chunk.stoneMesh.material = this.materials.stone;
+            }
+        };
+        img.onerror = () => console.log("textures3.png not found, using colors");
+        img.src = 'https://gefocheh.nekoweb.org/textures3.png';
+    }
+
+    initLights() {
+        this.scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(10, 20, 10);
+        this.scene.add(sun);
+    }
+
+    buildChunkGeometry(cx, cz, blockType) {
+        const positions = [];
+        const normals = [];
+        const indices = [];
+        const uvs = [];
+        const startX = cx * CHUNK_SIZE;
+        const startZ = cz * CHUNK_SIZE;
+        const colors = [];
+        const dirs = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+        const norms = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+        // Корректные UV (без поворота)
+        const quadUV = [[0,0],[1,0],[1,1],[0,1]];
+
+        let idxOffset = 0;
+
+        for (let x = 0; x < CHUNK_SIZE; x++) {
+            for (let z = 0; z < CHUNK_SIZE; z++) {
+                for (let y = CHUNK_HEIGHT_MIN; y <= CHUNK_HEIGHT_MAX; y++) {
+                    const wx = startX + x;
+                    const wz = startZ + z;
+                    const block = this.world.getBlock(wx, y, wz);
+                    if (!block || block.type !== blockType) continue;
+                    const hasBlockDirectlyAbove = (wx, y, wz) => {
+    return this.world.isSolid(wx, y + 1, wz);
+};
+
+const hasBlockAnywhereAbove = (wx, y, wz) => {
+    for (let yy = y + 2; yy <= CHUNK_HEIGHT_MAX; yy++) {
+        if (this.world.isSolid(wx, yy, wz)) return true;
+    }
+    return false;
+};
+                    const getShade = (wx, y, wz, face) => {
+    let shade = 1.0;
+
+    const directAbove = hasBlockDirectlyAbove(wx, y, wz);
+    const above = hasBlockAnywhereAbove(wx, y, wz);
+
+    if (directAbove) {
+        return shade;
+    }
+    if (face === 2 && above) {
+        shade *= 0.4;
+    }
+
+    if (face === 3) {
+        shade *= 0.5;
+    }
+
+    return shade;
+};
+                    for (let face = 0; face < 6; face++) {
+                        const [dx, dy, dz] = dirs[face];
+                        const nx = wx + dx;
+                        const ny = y + dy;
+                        const nz = wz + dz;
+                        const neighbor = this.world.getBlock(nx, ny, nz);
+                        if (!neighbor) {
+                        	const shade = getShade(wx, y, wz, face, dx, dy, dz);
+                            const [normX, normY, normZ] = norms[face];
+                            const w = 0.5;
+                            let verts;
+                            if (face === 0) verts = [[ w, w,-w],[ w,-w,-w],[ w,-w, w],[ w, w, w]]; // +X
+                            else if (face === 1) verts = [[-w, w, w],[-w,-w, w],[-w,-w,-w],[-w, w,-w]]; // -X
+                            else if (face === 2) verts = [[-w, w,-w],[ w, w,-w],[ w, w, w],[-w, w, w]]; // +Y (верх)
+                            else if (face === 3) verts = [[-w,-w, w],[ w,-w, w],[ w,-w,-w],[-w,-w,-w]]; // -Y (низ)
+                            else if (face === 4) verts = [[-w, w, w],[ w, w, w],[ w,-w, w],[-w,-w, w]]; // +Z
+                            else verts = [[ w, w,-w],[-w, w,-w],[-w,-w,-w],[ w,-w,-w]]; // -Z
+
+                            for (let i = 0; i < 4; i++) {
+                            	colors.push(shade, shade, shade);
+                                const px = wx + 0.5 + verts[i][0];
+                                const py = y  + 0.5 + verts[i][1];
+                                const pz = wz + 0.5 + verts[i][2];
+                                positions.push(px, py, pz);
+                                normals.push(normX, normY, normZ);
+                                uvs.push(quadUV[i][0], quadUV[i][1]);
+                            }
+                            const base = idxOffset;
+                            indices.push(base, base+2, base+1, base, base+3, base+2);
+                            idxOffset += 4;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (positions.length === 0) return null;
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+        geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+        geom.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+        geom.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+        geom.setIndex(indices);
+        return geom;
+    }
+
+    rebuildChunk(cx, cz) {
+        const key = getChunkKey(cx, cz);
+        const old = this.chunkMeshes.get(key);
+        if (old && old.group) {
+            this.scene.remove(old.group);
+            if (old.grassMesh) old.grassMesh.geometry.dispose();
+            if (old.dirtMesh)  old.dirtMesh.geometry.dispose();
+            if (old.stoneMesh) old.stoneMesh.geometry.dispose();
+        }
+
+        const group = new THREE.Group();
+        const grassGeo = this.buildChunkGeometry(cx, cz, 'grass');
+        const dirtGeo  = this.buildChunkGeometry(cx, cz, 'dirt');
+        const stoneGeo = this.buildChunkGeometry(cx, cz, 'stone');
+
+        let grassMesh = null, dirtMesh = null, stoneMesh = null;
+        if (grassGeo) { grassMesh = new THREE.Mesh(grassGeo, this.materials.grass); group.add(grassMesh); }
+        if (dirtGeo)  { dirtMesh  = new THREE.Mesh(dirtGeo,  this.materials.dirt);  group.add(dirtMesh);  }
+        if (stoneGeo) { stoneMesh = new THREE.Mesh(stoneGeo, this.materials.stone); group.add(stoneMesh); }
+
+        this.chunkMeshes.set(key, { group, grassMesh, dirtMesh, stoneMesh, cx, cz });
+        if (this.activeChunks.has(key)) this.scene.add(group);
+        return this.chunkMeshes.get(key);
+    }
+
+    onBlockChanged(x, y, z) {
+        const cx = getChunkCoord(x);
+        const cz = getChunkCoord(z);
+        const toRebuild = new Set([getChunkKey(cx, cz)]);
+        for (let dx = -1; dx <= 1; dx++)
+            for (let dz = -1; dz <= 1; dz++)
+                if (dx !== 0 || dz !== 0) toRebuild.add(getChunkKey(cx+dx, cz+dz));
+        for (const key of toRebuild) {
+            const [rcx, rcz] = key.split('|').map(Number);
+            this.rebuildChunk(rcx, rcz);
+            if (this.activeChunks.has(key)) {
+                const data = this.chunkMeshes.get(key);
+                if (data && data.group && !this.scene.children.includes(data.group))
+                    this.scene.add(data.group);
+            }
+        }
+    }
+
+    updateVisibleChunks() {
+        const camX = this.yaw.position.x;
+        const camZ = this.yaw.position.z;
+        const centerCX = getChunkCoord(camX);
+        const centerCZ = getChunkCoord(camZ);
+
+        const newActive = new Set();
+        const rad = this.renderDist;
+        for (let dx = -rad; dx <= rad; dx++) {
+            for (let dz = -rad; dz <= rad; dz++) {
+                const cx = centerCX + dx;
+                const cz = centerCZ + dz;
+                const key = getChunkKey(cx, cz);
+                newActive.add(key);
+                if (!this.chunkMeshes.has(key)) this.rebuildChunk(cx, cz);
+                const data = this.chunkMeshes.get(key);
+                if (data && data.group && !this.scene.children.includes(data.group))
+                    this.scene.add(data.group);
+            }
+        }
+
+        for (let oldKey of this.activeChunks) {
+            if (!newActive.has(oldKey)) {
+                const data = this.chunkMeshes.get(oldKey);
+                if (data && data.group) this.scene.remove(data.group);
+            }
+        }
+        this.activeChunks = newActive;
+    }
+
+    setRenderDistance(dist) {
+        this.renderDist = Math.max(2, Math.min(20, dist));
+        this.updateVisibleChunks();
+    }
+
+    syncBlocks() {
+        this.updateVisibleChunks();
+    }
+
+    clearAllChunks() {
+        for (let data of this.chunkMeshes.values()) {
+            if (data.group) this.scene.remove(data.group);
+            if (data.grassMesh) data.grassMesh.geometry.dispose();
+            if (data.dirtMesh)  data.dirtMesh.geometry.dispose();
+            if (data.stoneMesh) data.stoneMesh.geometry.dispose();
+        }
+        this.chunkMeshes.clear();
+        this.activeChunks.clear();
+    }
+
+    // --- Игроки ---
+    playerMeshes = new Map();
+    nickLabels = new Map();
+
+    createPlayerMesh(id, x, y, z, nickname) {
+        const g = new THREE.Group();
+        const bodyGeo = new THREE.BoxGeometry(0.6, 1.8, 0.6);
+        const bodyMat = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.y = 0.9;
+        g.add(body);
+        const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+        const headMat = new THREE.MeshLambertMaterial({ color: 0xffaa88 });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = 1.85;
+        g.add(head);
+        const rayPoints = [new THREE.Vector3(0, 1.6, 0), new THREE.Vector3(0, 1.6, -3)];
+        const rayGeo = new THREE.BufferGeometry().setFromPoints(rayPoints);
+        const rayMat = new THREE.LineBasicMaterial({ color: 0xff0000 });
+        const ray = new THREE.Line(rayGeo, rayMat);
+        ray.name = 'lookRay';
+        g.add(ray);
+        g.position.set(x, y, z);
+        g.userData = { id, nickname };
+        const div = document.createElement('div');
+        div.className = 'nickname';
+        div.innerText = nickname;
+        document.body.appendChild(div);
+        this.nickLabels.set(id, div);
+        return g;
+    }
+
+    syncPlayers() {
+        this.playerMeshes.forEach((mesh, id) => {
+            if (!this.world.players.has(id)) {
+                this.scene.remove(mesh);
+                if (this.nickLabels.has(id)) {
+                    document.body.removeChild(this.nickLabels.get(id));
+                    this.nickLabels.delete(id);
+                }
+                this.playerMeshes.delete(id);
+            }
+        });
+        this.world.players.forEach((p, id) => {
+            let mesh = this.playerMeshes.get(id);
+            if (!mesh) {
+                mesh = this.createPlayerMesh(id, p.x, p.y, p.z, p.nickname);
+                this.scene.add(mesh);
+                this.playerMeshes.set(id, mesh);
+            } else {
+                mesh.position.set(p.x, p.y, p.z);
+                mesh.rotation.y = p.rotationY || 0;
+                const ray = mesh.getObjectByName('lookRay');
+                if (ray) ray.rotation.x = p.rotationX || 0;
+            }
+            const label = this.nickLabels.get(id);
+            if (label) {
+                const pos = new THREE.Vector3(p.x, p.y+2, p.z);
+                pos.project(this.camera);
+                const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-pos.y * 0.5 + 0.5) * window.innerHeight;
+                label.style.left = x + 'px';
+                label.style.top = y + 'px';
+            }
+        });
+    }
+
+    setCameraPos(x, y, z) { this.yaw.position.set(x, y, z); }
+    rotateCamera(dyaw, dpitch) {
+        this.yaw.rotation.y += dyaw;
+        this.pitch.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.pitch.rotation.x + dpitch));
+    }
+    getCamDir() {
+        const dir = new THREE.Vector3();
+        this.camera.getWorldDirection(dir);
+        return dir;
+    }
+    render() { this.renderer.render(this.scene, this.camera); }
+}
+
+// ====================== МИР ======================
+class WorldSystem {
+    constructor(){ this.blocks=new Map(); this.players=new Map(); }
+    key(x,y,z){ return `${Math.floor(x)}|${Math.floor(y)}|${Math.floor(z)}`; }
+    getBlock(x,y,z){ return this.blocks.get(this.key(x,y,z)); }
+    setBlock(x,y,z,type){
+        const k=this.key(x,y,z);
+        if(type===null) this.blocks.delete(k);
+        else this.blocks.set(k,{x:Math.floor(x),y:Math.floor(y),z:Math.floor(z),type});
+    }
+    isSolid(x,y,z){ return this.blocks.has(this.key(x,y,z)); }
+    updatePlayer(id,x,y,z,rotY,rotX,nickname){ this.players.set(id,{x,y,z,rotY,rotX,nickname}); }
+    removePlayer(id){ this.players.delete(id); }
+    saveToJSON(){ return JSON.stringify({blocks:[...this.blocks.values()], players:[...this.players.entries()]}); }
+    loadFromJSON(json){
+        let data;
+        try{ data=JSON.parse(json); } catch(e){ data={blocks:[], players:[]}; }
+        this.blocks.clear(); (Array.isArray(data.blocks)?data.blocks:[]).forEach(b=>this.blocks.set(this.key(b.x,b.y,b.z),b));
+        this.players.clear(); (Array.isArray(data.players)?data.players:[]).forEach(([id,p])=>this.players.set(id,p));
+    }
+    generateDefaultWorld(size=10){
+        for(let x=-size;x<=size;x++)
+            for(let z=-size;z<=size;z++){
+                const h=Math.floor(Math.sin(x/5)*2+Math.cos(z/5)*2);
+                this.setBlock(x,h,z,'grass');
+                this.setBlock(x,h-1,z,'dirt');
+                this.setBlock(x,h-2,z,'stone');
+            }
+    }
+    findTopY(x,z){ for(let y=100;y>=-100;y--) if(this.isSolid(x,y,z)) return y; return 0; }
+}
+// ================================ ЗВУК
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTone(frequency, duration, volume = 0.3, type = "sine") {
+            const now = audioCtx.currentTime;
+            const oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            oscillator.connect(gain);
+            gain.connect(audioCtx.destination);
+            oscillator.type = type;
+            oscillator.frequency.value = frequency;
+            gain.gain.setValueAtTime(volume, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            oscillator.start(now);
+            oscillator.stop(now + duration);
+        }
+        function playPlaceSound() {
+            playTone(300, 0.1, 0.15, "sine");
+        }
+        function playBreakSound() {
+            playTone(150, 0.1, 0.2, "triangle");
+        }
+        function playServerConnectSound() {
+            playTone(180, 0.08, 0.15);
+            setTimeout(() => playTone(240, 0.12, 0.2, "triangle"), 50);
+            setTimeout(() => playTone(320, 0.2, 0.25, "sine"), 110);
+        }
+        function playServerDisconnectSound() {
+            playTone(320, 0.08, 0.2);
+            setTimeout(() => playTone(200, 0.15, 0.25, "triangle"), 60);
+            setTimeout(() => playTone(140, 0.25, 0.2, "triangle"), 130);
+        }
+        function playErrorSound() {
+            playTone(220, 0.08, 0.25, 'triangle');
+            setTimeout(() => playTone(180, 0.12, 0.3, 'triangle'), 80);
+        }
+//version of client
+var version = "bdea"
+// ====================== ЛОКАЛЬНЫЙ ИГРОК ======================
+class LocalPlayer {
+    constructor(world, renderer){
+        this.world = world;
+        this.renderer = renderer;
+        this.x = 0; this.y = 3; this.z = 5;
+        this.vy = 0; this.w = 0.6; this.h = 1.7; this.d = 0.6;
+        this.onGround = false;
+        this.keys = {};
+        this.fallThreshold = -10;
+        this.initControls();
+    }
+    initControls(){
+        onkeydown = e => this.keys[e.code] = true;
+        onkeyup = e => this.keys[e.code] = false;
+        onclick = () => document.body.requestPointerLock();
+        onmousemove = e => {
+            if(document.pointerLockElement !== document.body) return;
+            this.renderer.rotateCamera(-e.movementX*0.002, -e.movementY*0.002);
+        };
+    }
+    isSolid(x,y,z){ return this.world.isSolid(Math.floor(x),Math.floor(y),Math.floor(z)); }
+    collide(pos){
+    const minX = Math.floor(pos.x - this.w/2);
+    const maxX = Math.floor(pos.x + this.w/2);
+    const minY = Math.floor(pos.y);
+    const maxY = Math.floor(pos.y + this.h);
+    const minZ = Math.floor(pos.z - this.d/2);
+    const maxZ = Math.floor(pos.z + this.d/2);
+
+    for(let x = minX; x <= maxX; x++){
+        for(let y = minY; y <= maxY; y++){
+            for(let z = minZ; z <= maxZ; z++){
+                if(this.world.isSolid(x, y, z)){
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+    update(){
+        const speed = 0.08;
+        const dir = this.renderer.getCamDir(); dir.y = 0; dir.normalize();
+        const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0));
+        let nx = this.x, nz = this.z;
+        if(this.keys.KeyW){ nx += dir.x*speed; nz += dir.z*speed; }
+        if(this.keys.KeyS){ nx -= dir.x*speed; nz -= dir.z*speed; }
+        if(this.keys.KeyA){ nx -= right.x*speed; nz -= right.z*speed; }
+        if(this.keys.KeyD){ nx += right.x*speed; nz += right.z*speed; }
+        if(!this.collide({x:nx, y:this.y, z:nz})){ this.x = nx; this.z = nz; }
+
+        this.vy -= 0.01;
+        let ny = this.y + this.vy;
+        if(this.vy > 0){
+            if(!this.collide({x:this.x, y:ny+0.001, z:this.z})) this.y = ny;
+            else this.vy = 0;
+        } else {
+            if(!this.collide({x:this.x, y:ny, z:this.z})){ this.y = ny; this.onGround = false; }
+            else { this.onGround = true; this.vy = 0; this.y = Math.floor(ny) + 1; }
+        }
+        if(this.keys.Space && this.onGround){ this.vy = 0.22; this.onGround = false; }
+        if(this.y < this.fallThreshold){ this.y = this.world.findTopY(this.x, this.z) + 1.6; this.vy = 0; }
+        this.renderer.setCameraPos(this.x, this.y, this.z);
+        return {x:this.x, y:this.y, z:this.z, rotationY: this.renderer.yaw.rotation.y, rotationX: this.renderer.pitch.rotation.x};
+    }
+    getTargetBlock(){
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera({x:0,y:0}, this.renderer.camera);
+        const meshes = [];
+        for (let chunk of this.renderer.chunkMeshes.values())
+            if (chunk.group) meshes.push(chunk.group);
+        const hits = raycaster.intersectObjects(meshes, true);
+        if (hits.length && hits[0].distance <= 5) {
+            const hit = hits[0];
+            const point = hit.point;
+            const normal = hit.face.normal;
+            const bx = Math.floor(point.x - normal.x * 0.5);
+            const by = Math.floor(point.y - normal.y * 0.5);
+            const bz = Math.floor(point.z - normal.z * 0.5);
+            const block = this.world.getBlock(bx, by, bz);
+            if (block) {
+                return {
+                    object: { userData: { x: bx, y: by, z: bz, type: block.type } },
+                    point: point,
+                    face: { normal: normal }
+                };
+            }
+        }
+        return null;
+    }
+}
+
+// ====================== МУЛЬТИПЛЕЕР ======================
+class MultiplayerManager {
+    constructor(world, renderer, localPlayer){
+        this.lastSend = 0;
+        this.sendInterval = 50;
+        this.world = world;
+        this.renderer = renderer;
+        this.localPlayer = localPlayer;
+        this.online = false;
+        this.playerId = 'local_'+Math.random().toString(36).substr(2,6);
+        this.socket = null;
+        this.toggleButton = document.getElementById('onlineToggle');
+        this.toggleButton.onclick = () => this.setOnline(!this.online);
+    }
+    setOnline(val){
+        this.online = val;
+        this.toggleButton.innerText = `Online: ${val?'ON':'OFF'}`;
+        if(val){
+            let url = document.getElementById('newServerInput').value.trim();
+            if(!url) url = 'wss://spamcavegame-server.onrender.com';
+            this.connect(url);
+            console.log("connecting to: " + url)
+        } else if(this.socket){
+            this.socket.close();
+            this.socket = null;
+        }
+    }
+    connect(url){
+        this.socket = new WebSocket(url);
+        this.socket.onopen = () => console.log('Connected');
+        this.socket.onopen = () => playServerConnectSound();
+        this.socket.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if(data.type === 'worldState'){
+                this.world.blocks.clear();
+                this.world.players.clear();
+                this.renderer.clearAllChunks();
+                data.blocks.forEach(b => this.world.setBlock(b.x,b.y,b.z,b.type));
+                data.players.forEach(([id,p]) => this.world.updatePlayer(id,p.x,p.y,p.z,p.rotationY,p.rotationX,p.nickname));
+                this.playerId = data.playerId;
+                this.renderer.updateVisibleChunks();
+            }
+            else if(data.type === 'playerMoved' || data.type === 'playerJoined'){
+                if(data.playerId === this.playerId) return;
+                this.world.updatePlayer(data.playerId,data.x,data.y,data.z,data.rotationY,data.rotationX,data.nickname);
+            }
+            else if(data.type === 'playerLeft') this.world.removePlayer(data.playerId);
+            else if(data.type === 'blockPlaced'){
+                this.world.setBlock(data.x,data.y,data.z,data.blockType);
+                this.renderer.onBlockChanged(data.x,data.y,data.z);
+            }
+            else if(data.type === 'blockBroken'){
+                this.world.setBlock(data.x,data.y,data.z,null);
+                this.renderer.onBlockChanged(data.x,data.y,data.z);
+            }
+            else if(data.type === 'chat'){
+                const nick = this.world.players.get(data.playerId)?.nickname || data.playerId.slice(0,8);
+                appendChatMessage(`${nick}: ${data.text}`);
+            }
+        };
+        this.socket.onclose = () => console.log('Disconnected');
+        this.socket.onclose = () => playServerConnectSound();
+    }
+    sendPlayerUpdate(pos){
+        if(this.online && this.socket && this.socket.readyState === WebSocket.OPEN){
+            this.socket.send(JSON.stringify({type:'playerUpdate', playerId:this.playerId, ...pos}));
+        }
+    }
+    sendBlockPlace(x,y,z,type){
+        if(this.online && this.socket) this.socket.send(JSON.stringify({type:'blockPlace', playerId:this.playerId, x,y,z, blockType:type}));
+    }
+    sendBlockBreak(x,y,z){
+        if(this.online && this.socket) this.socket.send(JSON.stringify({type:'blockBreak', playerId:this.playerId, x,y,z}));
+    }
+    update(){
+        const pos = this.localPlayer.update();
+        if(this.online){
+            const now = performance.now();
+            if(now - this.lastSend >= this.sendInterval){
+                this.lastSend = now;
+                this.sendPlayerUpdate(pos);
+            }
+        }
+    }
+}
+
+// ====================== ИНИЦИАЛИЗАЦИЯ ======================
+const world = new WorldSystem();
+const renderer = new OptimizedRenderer(world);
+const localPlayer = new LocalPlayer(world, renderer);
+const multiplayer = new MultiplayerManager(world, renderer, localPlayer);
+
+const saved = localStorage.getItem('savedWorld');
+if(saved) world.loadFromJSON(saved);
+if(!multiplayer.online && world.blocks.size===0) world.generateDefaultWorld(10);
+
+// Слайдер дальности
+const slider = document.getElementById('chunkDistSlider');
+const distSpan = document.getElementById('distValue');
+slider.addEventListener('input', () => {
+    const val = parseInt(slider.value, 10);
+    distSpan.innerText = val;
+    renderer.setRenderDistance(val);
+});
+renderer.setRenderDistance(parseInt(slider.value, 10));
+
+// Чат
+const chatMessagesDiv = document.getElementById('chatMessages');
+const chatInputNew = document.getElementById('chatInput');
+const chatSendBtn = document.getElementById('chatSend');
+function appendChatMessage(msg) {
+    const div = document.createElement('div');
+    div.innerText = msg;
+    chatMessagesDiv.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    while(chatMessagesDiv.children.length > 60) chatMessagesDiv.removeChild(chatMessagesDiv.firstChild);
+}
+function sendChatMessage() {
+    const text = chatInputNew.value.trim();
+    if (text && multiplayer.online && multiplayer.socket && multiplayer.socket.readyState === WebSocket.OPEN) {
+        multiplayer.socket.send(JSON.stringify({ type: 'chat', text }));
+        chatInputNew.value = '';
+    } else if (!multiplayer.online) {
+        appendChatMessage("[System] Chat is only available in online mode");
+        playErrorSound();
+    }
+}
+chatSendBtn.onclick = sendChatMessage;
+chatInputNew.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendChatMessage(); });
+
+// Выбор блока 
+const blockTypes = ['stone', 'dirt', 'grass'];
+let selectedBlockIndex = 2; // stone
+const blockSelectorDiv = document.getElementById('blockSelector');
+function updateBlockSelector() {
+    blockSelectorDiv.innerText = `Block: ${blockTypes[selectedBlockIndex]}`;
+}
+updateBlockSelector();
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Digit1') { selectedBlockIndex = 0; updateBlockSelector(); e.preventDefault(); }
+    if (e.code === 'Digit2') { selectedBlockIndex = 1; updateBlockSelector(); e.preventDefault(); }
+    if (e.code === 'Digit3') { selectedBlockIndex = 2; updateBlockSelector(); e.preventDefault(); }
+});
+
+// Установка/разрушение блоков
+oncontextmenu = e => e.preventDefault();
+onmousedown = e => {
+    const hit = localPlayer.getTargetBlock();
+    if (!hit) return;
+    const b = hit.object.userData;
+    const n = hit.face.normal;
+    if (e.button === 0) {
+        if (world.getBlock(b.x, b.y, b.z)) {
+            world.setBlock(b.x, b.y, b.z, null);
+            renderer.onBlockChanged(b.x, b.y, b.z);
+            multiplayer.sendBlockBreak(b.x, b.y, b.z);
+            playBreakSound();
+        }
+    }
+    if (e.button === 2) {
+        const x = b.x + n.x;
+        const y = b.y + n.y;
+        const z = b.z + n.z;
+        if (!world.isSolid(x,y,z) && !localPlayer.collide({x:x+0.5, y:y+0.5, z:z+0.5})) {
+            const type = blockTypes[selectedBlockIndex];
+            world.setBlock(x, y, z, type);
+            renderer.onBlockChanged(x, y, z);
+            multiplayer.sendBlockPlace(x, y, z, type);
+            playPlaceSound();
+        }
+    }
+};
+
+// Серверное меню
+const serverMenuToggle = document.getElementById('serverMenuToggle');
+const serverMenu = document.getElementById('serverMenu');
+const serverListDiv = document.getElementById('serverList');
+const serverInput = document.getElementById('newServerInput');
+const addServerBtn = document.getElementById('addServerBtn');
+const DEFAULT_SERVER = 'wss://spamcavegame-server.onrender.com';
+let servers = JSON.parse(localStorage.getItem('servers') || '[]');
+if(!servers.includes(DEFAULT_SERVER)) servers.unshift(DEFAULT_SERVER);
+serverInput.value = servers[0];
+
+function renderServerList() {
+    serverListDiv.innerHTML = '';
+    servers.forEach(url => {
+        const div = document.createElement('div');
+        div.innerText = url;
+        div.style.cursor = 'pointer';
+        div.style.padding = '2px 0';
+        div.style.borderBottom = '1px solid #555';
+        div.onclick = () => {
+            serverInput.value = url;
+            serverMenu.style.display = 'none';
+            if(multiplayer.online){
+                multiplayer.setOnline(false);
+                setTimeout(()=>multiplayer.setOnline(true),100);
+            } else {
+                multiplayer.setOnline(true);
+            }
+        };
+        serverListDiv.appendChild(div);
+    });
+}
+addServerBtn.onclick = () => {
+    const url = serverInput.value.trim();
+    if(url && !servers.includes(url)){
+        servers.push(url);
+        localStorage.setItem('servers', JSON.stringify(servers));
+        serverInput.value = '';
+        renderServerList();
+    }
+};
+serverMenuToggle.onclick = () => {
+    serverMenu.style.display = serverMenu.style.display === 'none' ? 'block' : 'none';
+};
+renderServerList();
+
+// Игровой цикл
+function gameLoop(){
+    requestAnimationFrame(gameLoop);
+    multiplayer.update();
+    renderer.syncBlocks();
+    renderer.syncPlayers();
+    renderer.render();
+    document.getElementById('debug').innerHTML =
+        `Pos: ${localPlayer.x.toFixed(2)}, ${localPlayer.y.toFixed(2)}, ${localPlayer.z.toFixed(2)}<br>`+
+        `Blocks: ${world.blocks.size}<br>Players: ${world.players.size}<br>Chunks: ${renderer.activeChunks.size}`;
+}
+gameLoop();
+
+window.GameAPI = { world, renderer, localPlayer, multiplayer, THREE, version, audioCtx };
+function loadMod(url){
+    const s = document.createElement('script');
+    s.src = url;
+    document.body.appendChild(s);
+}
+</script>
+</body>
+</html>
