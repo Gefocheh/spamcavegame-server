@@ -1,6 +1,6 @@
 # spamCavegameJS Server
 
-Simple multiplayer voxel server written in Node.js.
+Simple multiplayer server written in Node.js for voxel game spamcavegame.
 
 ## Features
 - WebSocket multiplayer
