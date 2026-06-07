@@ -1,17 +1,17 @@
+// db.js
 const knex = require('knex');
 
-
 function getConnectionConfig() {
-    // Сначала проверяем строку подключения (Render автоматически создаёт её при привязке БД)
+    // First check connection string (Render automatically creates it when attaching a DB)
     const databaseUrl = process.env.INTERNAL_DATABASE_URL || process.env.DATABASE_URL;
     if (databaseUrl) {
-        console.log('[DB] Используется DATABASE_URL для PostgreSQL');
+        console.log('[DB] Using DATABASE_URL for PostgreSQL');
         return databaseUrl;
     }
 
-    // Если нет строки, но указан клиент PostgreSQL, используем отдельные переменные
+    // If no string but PostgreSQL client is specified, use individual variables
     if (process.env.DB_CLIENT === 'pg') {
-        console.log('[DB] Используются отдельные переменные для PostgreSQL');
+        console.log('[DB] Using individual variables for PostgreSQL');
         return {
             host: process.env.DB_HOST,
             port: process.env.DB_PORT || 5432,
@@ -21,28 +21,28 @@ function getConnectionConfig() {
         };
     }
 
-    // Иначе — SQLite
-    console.log('[DB] Используется SQLite');
+    // Otherwise — SQLite
+    console.log('[DB] Using SQLite');
     return {
         filename: process.env.DATABASE_PATH || './server.db'
     };
 }
 
-// Определяем, какой клиент использовать
+// Determine which client to use
 const isPostgres = !!(
     process.env.INTERNAL_DATABASE_URL ||
     process.env.DATABASE_URL ||
     process.env.DB_CLIENT === 'pg'
 );
 
-// Создаём экземпляр knex
+// Create knex instance
 const db = knex({
     client: isPostgres ? 'pg' : 'sqlite3',
     connection: getConnectionConfig(),
     useNullAsDefault: true
 });
 
-// Инициализация таблиц (остаётся без изменений)
+// Initialize tables
 async function initDB() {
     if (!(await db.schema.hasTable('blocks'))) {
         await db.schema.createTable('blocks', t => {
@@ -65,6 +65,15 @@ async function initDB() {
         await db.schema.createTable('plugin_data', t => {
             t.string('plugin'); t.string('key'); t.text('value');
             t.primary(['plugin', 'key']);
+        });
+    }
+
+    // New table for saved strings
+    if (!(await db.schema.hasTable('saved_strings'))) {
+        await db.schema.createTable('saved_strings', t => {
+            t.increments('id');
+            t.string('value');
+            t.timestamp('created_at').defaultTo(db.fn.now());
         });
     }
 }
