@@ -1,25 +1,9 @@
-// server.js
 /*MIT License
 
 Copyright (c) 2026 Gefocheh
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.*/
+... (full license text) ...
+*/
 
 const WebSocket = require('ws');
 const fs = require('fs');
@@ -27,39 +11,26 @@ const http = require('http');
 const { db, initDB } = require('./db');
 
 /* ================= CONFIG ================= */
-
 const CLIENT_VERSION = '1.0.0';
-
 const MAX_PLAYERS = 19;
 const MAX_BLOCKS = 200000;
-
 const MAX_MOVE_DIST = 10;
 const BLOCK_INTERACT_DIST = 6;
-
 const MSG_LIMIT = 30;
 const MSG_INTERVAL = 1000;
 
 /* ================= HELPERS ================= */
-
 const isNumber = n => typeof n === 'number' && Number.isFinite(n);
-
-const dist = (a, b) =>
-  Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
-
-const escapeHTML = s =>
-  String(s).replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
-  );
+const dist = (a, b) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
+const escapeHTML = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function rateLimit(ws) {
   const now = Date.now();
   ws._rate = ws._rate || { count: 0, time: now };
-
   if (now - ws._rate.time > MSG_INTERVAL) {
     ws._rate.count = 0;
     ws._rate.time = now;
   }
-
   ws._rate.count++;
   return ws._rate.count <= MSG_LIMIT;
 }
@@ -72,43 +43,31 @@ console.log('DB_HOST:', process.env.DB_HOST);
 console.log('=== END ENV CHECK ===');
 
 /* ================= WORLD ================= */
-
 class ServerWorld {
   constructor() {
     this.blocks = new Map();
     this.players = new Map();
     this.wss = null;
   }
-
   key(x, y, z) { return `${x}|${y}|${z}`; }
-
   async load() {
-    //this.blocks.clear(); // IMPORTANT
     const rows = await db('blocks');
-    for (const r of rows) {
-      this.blocks.set(this.key(r.x, r.y, r.z), r);
-    }
+    for (const r of rows) this.blocks.set(this.key(r.x, r.y, r.z), r);
     if (this.blocks.size === 0) this.generateDefaultWorld();
   }
-
   async save() {
     await db('blocks').del();
-    for (const b of this.blocks.values()) {
-      await db('blocks').insert(b);
-    }
+    for (const b of this.blocks.values()) await db('blocks').insert(b);
   }
-
-
-generateDefaultWorld() {
-    console.log("generating default world")
+  generateDefaultWorld() {
+    console.log("generating default world");
     for (let x = -40; x <= 40; x++)
-        for (let z = -40; z <= 40; z++) {
-            this.blocks.set(this.key(x, -2, z), { x, y: -2, z, type: 'stone' });
-            this.blocks.set(this.key(x, -1, z), { x, y: -1, z, type: 'dirt' });
-            this.blocks.set(this.key(x, 0, z), { x, y: 0, z, type: 'grass' });
-        }
-}
-
+      for (let z = -40; z <= 40; z++) {
+        this.blocks.set(this.key(x, -2, z), { x, y: -2, z, type: 'stone' });
+        this.blocks.set(this.key(x, -1, z), { x, y: -1, z, type: 'dirt' });
+        this.blocks.set(this.key(x, 0, z), { x, y: 0, z, type: 'grass' });
+      }
+  }
   addPlayer(ws) {
     const id = 'p' + Math.floor(Math.random() * 100000);
     const p = { x: 0, y: 5, z: 0, rotationY: 0, rotationX: 0, nickname: id };
@@ -116,113 +75,59 @@ generateDefaultWorld() {
     this.players.set(id, p);
     return { id, player: p };
   }
-
   removePlayer(id) {
     this.players.delete(id);
     this.broadcast({ type: 'playerLeft', playerId: id });
   }
-
   movePlayer(ws, data) {
     const p = this.players.get(ws.id);
     if (!p) return;
-
-    const delta = {
-      x: data.x - p.x,
-      y: data.y - p.y,
-      z: data.z - p.z
-    };
-
-    if (
-      Math.abs(delta.x) > MAX_MOVE_DIST ||
-      Math.abs(delta.y) > MAX_MOVE_DIST ||
-      Math.abs(delta.z) > MAX_MOVE_DIST
-    ) return;
-
-    p.x = data.x;
-    p.y = data.y;
-    p.z = data.z;
-    p.rotationY = data.rotationY;
-    p.rotationX = data.rotationX;
-
+    const delta = { x: data.x - p.x, y: data.y - p.y, z: data.z - p.z };
+    if (Math.abs(delta.x) > MAX_MOVE_DIST || Math.abs(delta.y) > MAX_MOVE_DIST || Math.abs(delta.z) > MAX_MOVE_DIST) return;
+    p.x = data.x; p.y = data.y; p.z = data.z;
+    p.rotationY = data.rotationY; p.rotationX = data.rotationX;
     this.broadcast({ type: 'playerMoved', playerId: ws.id, ...p }, ws.id);
   }
-
   setBlock(x, y, z, type) {
     const k = this.key(x, y, z);
-
     if (type === null) this.blocks.delete(k);
     else {
       if (this.blocks.size >= MAX_BLOCKS) return false;
       this.blocks.set(k, { x, y, z, type });
     }
-
-    this.broadcast({
-      type: type ? 'blockPlaced' : 'blockBroken',
-      x, y, z, blockType: type
-    });
-
+    this.broadcast({ type: type ? 'blockPlaced' : 'blockBroken', x, y, z, blockType: type });
     return true;
   }
-
   async savePlayer(id, p) {
-    await db('players').insert({
-      id,
-      x: p.x, y: p.y, z: p.z,
-      rotationY: p.rotationY,
-      rotationX: p.rotationX,
-      nickname: p.nickname
-    }).onConflict('id').merge();
+    await db('players').insert({ id, x: p.x, y: p.y, z: p.z, rotationY: p.rotationY, rotationX: p.rotationX, nickname: p.nickname }).onConflict('id').merge();
   }
-
   broadcast(msg, exclude = null) {
     const s = JSON.stringify(msg);
-    this.wss.clients.forEach(c => {
-      if (c.readyState === WebSocket.OPEN && c.id !== exclude) {
-        c.send(s);
-      }
-    });
+    this.wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN && c.id !== exclude) c.send(s); });
   }
 }
 
 /* ================= PLUGINS ================= */
-
 class PluginAPI {
   constructor(world) {
     this._world = world;
     this._pluginName = 'unknown';
     this._wss = null;
-
-    this.events = {
-      playerJoin: [],
-      playerLeave: [],
-      blockPlace: [],
-      blockBreak: [],
-      chat: [],
-      tick: []
-    };
-
+    this.events = { playerJoin: [], playerLeave: [], blockPlace: [], blockBreak: [], chat: [], tick: [] };
     this.commands = new Map();
-
     this.storage = {
       get: async (key, def = null) => {
-        const row = await db('plugin_data')
-          .where({ plugin: this._pluginName, key }).first();
+        const row = await db('plugin_data').where({ plugin: this._pluginName, key }).first();
         return row ? JSON.parse(row.value) : def;
       },
       set: async (key, val) => {
-        await db('plugin_data')
-          .insert({ plugin: this._pluginName, key, value: JSON.stringify(val) })
-          .onConflict(['plugin', 'key']).merge();
+        await db('plugin_data').insert({ plugin: this._pluginName, key, value: JSON.stringify(val) }).onConflict(['plugin', 'key']).merge();
       }
     };
-
-    // limited access to the world
     this.world = {
       getBlock: (x, y, z) => this._world.blocks.get(this._world.key(x, y, z)) || null,
       setBlock: (x, y, z, type) => this._world.setBlock(x, y, z, type)
     };
-
-    // NEW: methods to interact with players
     this.players = {
       get: (id) => this._world.players.get(id) || null,
       getAll: () => [...this._world.players.entries()],
@@ -230,11 +135,7 @@ class PluginAPI {
         if (!this._wss) return;
         for (const client of this._wss.clients) {
           if (client.id === id && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-              type: 'chat',
-              playerId: 'SYSTEM',
-              text: String(text)
-            }));
+            client.send(JSON.stringify({ type: 'chat', playerId: 'SYSTEM', text: String(text) }));
             break;
           }
         }
@@ -251,27 +152,16 @@ class PluginAPI {
       }
     };
   }
-
   _setPluginName(n) { this._pluginName = n; }
   attachWSS(wss) { this._wss = wss; }
-
-  on(event, fn) {
-    if (this.events[event]) this.events[event].push(fn);
-  }
-
+  on(event, fn) { if (this.events[event]) this.events[event].push(fn); }
   emit(event, data) {
     if (!this.events[event]) return true;
-
     for (const fn of this.events[event]) {
-      try {
-        if (fn(data) === false) return false;
-      } catch (e) {
-        console.error('[PLUGIN ERROR]', e);
-      }
+      try { if (fn(data) === false) return false; } catch (e) { console.error('[PLUGIN ERROR]', e); }
     }
     return true;
   }
-
   registerCommand(cmd) {
     if (!cmd.name || typeof cmd.handler !== 'function') return;
     this.commands.set(cmd.name, cmd);
@@ -280,10 +170,8 @@ class PluginAPI {
 
 class PluginManager {
   constructor(api) { this.api = api; }
-
   loadAll() {
     if (!fs.existsSync('./plugins')) return;
-
     fs.readdirSync('./plugins')
       .filter(f => f.endsWith('.js'))
       .forEach(file => {
@@ -292,28 +180,24 @@ class PluginManager {
           this.api._setPluginName(file.replace('.js', ''));
           p.init(this.api);
           console.log('[PLUGIN]', file);
-        } catch (e) {
-          console.error(e);
-        }
+        } catch (e) { console.error(e); }
       });
   }
 }
 
+/* ================= HTTP SERVER & STRING SAVING ================= */
 function setCORSHeaders(res, req) {
   const origin = req.headers.origin;
   if (origin) {
-    // Echo the requesting origin (allows credentials if needed)
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else {
-    // Fallback to wildcard (no credentials)
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-// Function to save a string to the database
 async function saveStringToDB(str) {
   try {
     await db('saved_strings').insert({ value: str });
@@ -325,27 +209,19 @@ async function saveStringToDB(str) {
   }
 }
 
-// Function to log all saved strings
 async function logAllSavedStrings() {
   try {
     const rows = await db('saved_strings').select('*').orderBy('created_at', 'asc');
-    if (rows.length === 0) {
-      console.log('[LOG] No saved strings found.');
-    } else {
+    if (rows.length === 0) console.log('[LOG] No saved strings found.');
+    else {
       console.log('[LOG] All saved strings:');
-      rows.forEach(row => {
-        console.log(`  ID: ${row.id}, Value: "${row.value}", Created: ${row.created_at}`);
-      });
+      rows.forEach(row => console.log(`  ID: ${row.id}, Value: "${row.value}", Created: ${row.created_at}`));
     }
-  } catch (err) {
-    console.error('[LOG] Failed to retrieve saved strings:', err);
-  }
+  } catch (err) { console.error('[LOG] Failed to retrieve saved strings:', err); }
 }
 
 /* ================= START ================= */
-
 (async () => {
-
   await initDB();
 
   const world = new ServerWorld();
@@ -357,9 +233,7 @@ async function logAllSavedStrings() {
 
   const PORT = process.env.PORT || 8080;
 
-  // Create HTTP server
   const server = http.createServer(async (req, res) => {
-    // Handle preflight OPTIONS request
     if (req.method === 'OPTIONS') {
       setCORSHeaders(res, req);
       res.writeHead(204);
@@ -367,7 +241,6 @@ async function logAllSavedStrings() {
       return;
     }
 
-    // Only handle GET requests for the save endpoint
     if (req.method === 'GET') {
       const url = new URL(req.url, `http://${req.headers.host}`);
       if (url.pathname === '/save-string' && url.searchParams.has('twm')) {
@@ -389,74 +262,48 @@ async function logAllSavedStrings() {
       }
     }
 
-    // For any other path or method, return 404 with CORS headers
     setCORSHeaders(res, req);
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');
   });
 
-  // Create WebSocket server attached to the same HTTP server
   const wss = new WebSocket.Server({ server });
 
   world.wss = wss;
   api.attachWSS(wss);
 
-  // Start the server
   server.listen(PORT, () => {
     console.log(`HTTP and WebSocket server started on port ${PORT}`);
   });
 
-  // Every 20 minutes, log all saved strings
-  setInterval(async () => {
-    await logAllSavedStrings();
-  }, 20 * 60 * 1000); // 20 minutes
+  // Log every 20 minutes
+  setInterval(async () => { await logAllSavedStrings(); }, 20 * 60 * 1000);
 
-  // WebSocket connection handling (unchanged, same as before)
+  // WebSocket connection handling (full, same as before)
   wss.on('connection', ws => {
-    if (world.players.size >= MAX_PLAYERS) {
-      ws.close(); return;
-    }
+    if (world.players.size >= MAX_PLAYERS) { ws.close(); return; }
     const { id, player } = world.addPlayer(ws);
     api.emit('playerJoin', { playerId: id });
     console.log(`Player joined: ${id} (${player.nickname})`);
-    ws.send(JSON.stringify({
-      type: 'worldState',
-      blocks: [...world.blocks.values()],
-      players: [...world.players.entries()],
-      playerId: id
-    }));
+    ws.send(JSON.stringify({ type: 'worldState', blocks: [...world.blocks.values()], players: [...world.players.entries()], playerId: id }));
     world.broadcast({ type: 'playerJoined', playerId: id, ...player }, id);
     ws.on('message', async raw => {
       if (!rateLimit(ws)) return;
       let data;
       try { data = JSON.parse(raw); } catch { return; }
-      if (data.clientVersion && data.clientVersion !== CLIENT_VERSION) {
-        ws.close(); return;
-      }
+      if (data.clientVersion && data.clientVersion !== CLIENT_VERSION) { ws.close(); return; }
       if (data.type === 'playerUpdate') {
-        if (isNumber(data.x) && isNumber(data.y) && isNumber(data.z) &&
-            isNumber(data.rotationY) && isNumber(data.rotationX)) {
+        if (isNumber(data.x) && isNumber(data.y) && isNumber(data.z) && isNumber(data.rotationY) && isNumber(data.rotationX))
           world.movePlayer(ws, data);
-        }
       }
       if (data.type === 'blockPlace' || data.type === 'blockBreak') {
         const p = world.players.get(ws.id);
         if (!p) return;
         if (dist(p, data) > BLOCK_INTERACT_DIST) return;
-        const evt = {
-          playerId: ws.id,
-          x: data.x, y: data.y, z: data.z,
-          blockType: data.blockType
-        };
-        const ok = api.emit(
-          data.type === 'blockPlace' ? 'blockPlace' : 'blockBreak',
-          evt
-        );
+        const evt = { playerId: ws.id, x: data.x, y: data.y, z: data.z, blockType: data.blockType };
+        const ok = api.emit(data.type === 'blockPlace' ? 'blockPlace' : 'blockBreak', evt);
         if (!ok) return;
-        world.setBlock(
-          data.x, data.y, data.z,
-          data.type === 'blockPlace' ? data.blockType : null
-        );
+        world.setBlock(data.x, data.y, data.z, data.type === 'blockPlace' ? data.blockType : null);
       }
       if (data.type === 'chat') {
         const text = escapeHTML(data.text).slice(0, 200);
@@ -477,13 +324,10 @@ async function logAllSavedStrings() {
     });
   });
 
-  // Auto-save world and all players every minute
+  // Auto-save every minute
   setInterval(async () => {
     api.emit('tick', {});
     await world.save();
-    for (const [id, p] of world.players) {
-      await world.savePlayer(id, p);
-    }
+    for (const [id, p] of world.players) await world.savePlayer(id, p);
   }, 60000);
-
 })();
