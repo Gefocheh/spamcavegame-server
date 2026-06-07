@@ -23,7 +23,7 @@ SOFTWARE.*/
 
 const WebSocket = require('ws');
 const fs = require('fs');
-const http = require('http'); // Added for HTTP server
+const http = require('http');
 const { db, initDB } = require('./db');
 
 /* ================= CONFIG ================= */
@@ -301,6 +301,13 @@ class PluginManager {
 
 /* ================= HTTP SERVER & STRING SAVING ================= */
 
+// Helper to set CORS headers on response
+function setCORSHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 // Function to save a string to the database
 async function saveStringToDB(str) {
   try {
@@ -347,16 +354,27 @@ async function logAllSavedStrings() {
 
   // Create HTTP server
   const server = http.createServer(async (req, res) => {
+    // Handle preflight OPTIONS request
+    if (req.method === 'OPTIONS') {
+      setCORSHeaders(res);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     const url = new URL(req.url, `http://${req.headers.host}`);
     // Handle the specific endpoint: /save-string?twm=value
-    if (url.pathname === '/save-string' && url.searchParams.has('twm')) {
+    if (req.method === 'GET' && url.pathname === '/save-string' && url.searchParams.has('twm')) {
       const stringToSave = url.searchParams.get('twm');
       const success = await saveStringToDB(stringToSave);
+      setCORSHeaders(res);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: success ? "true" : "false" }));
       return;
     }
-    // For any other path, return 404
+
+    // For any other path, return 404 with CORS headers (optional)
+    setCORSHeaders(res);
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');
   });
