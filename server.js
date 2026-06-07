@@ -1,3 +1,4 @@
+// server.js
 /*MIT License
 
 Copyright (c) 2026 Gefocheh
@@ -19,8 +20,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
+
 const WebSocket = require('ws');
 const fs = require('fs');
+const http = require('http'); // Added for HTTP server
 const { db, initDB } = require('./db');
 
 /* ================= CONFIG ================= */
@@ -60,12 +63,14 @@ function rateLimit(ws) {
   ws._rate.count++;
   return ws._rate.count <= MSG_LIMIT;
 }
+
 console.log('=== ENV CHECK ===');
 console.log('DB_CLIENT:', process.env.DB_CLIENT);
 console.log('DATABASE_URL exists?', !!process.env.DATABASE_URL);
 console.log('INTERNAL_DATABASE_URL exists?', !!process.env.INTERNAL_DATABASE_URL);
 console.log('DB_HOST:', process.env.DB_HOST);
 console.log('=== END ENV CHECK ===');
+
 /* ================= WORLD ================= */
 
 class ServerWorld {
@@ -78,7 +83,7 @@ class ServerWorld {
   key(x, y, z) { return `${x}|${y}|${z}`; }
 
   async load() {
-    //this.blocks.clear(); // ВАЖНО
+    //this.blocks.clear(); // IMPORTANT
     const rows = await db('blocks');
     for (const r of rows) {
       this.blocks.set(this.key(r.x, r.y, r.z), r);
@@ -211,13 +216,13 @@ class PluginAPI {
       }
     };
 
-    // ограниченный доступ к миру
+    // limited access to the world
     this.world = {
       getBlock: (x, y, z) => this._world.blocks.get(this._world.key(x, y, z)) || null,
       setBlock: (x, y, z, type) => this._world.setBlock(x, y, z, type)
     };
 
-    // НОВОЕ: методы для работы с игроками
+    // NEW: methods to interact with players
     this.players = {
       get: (id) => this._world.players.get(id) || null,
       getAll: () => [...this._world.players.entries()],
@@ -294,6 +299,37 @@ class PluginManager {
   }
 }
 
+/* ================= HTTP SERVER & STRING SAVING ================= */
+
+// Function to save a string to the database
+async function saveStringToDB(str) {
+  try {
+    await db('saved_strings').insert({ value: str });
+    console.log(`[HTTP] Saved string: "${str}"`);
+    return true;
+  } catch (err) {
+    console.error('[HTTP] Failed to save string:', err);
+    return false;
+  }
+}
+
+// Function to log all saved strings
+async function logAllSavedStrings() {
+  try {
+    const rows = await db('saved_strings').select('*').orderBy('created_at', 'asc');
+    if (rows.length === 0) {
+      console.log('[LOG] No saved strings found.');
+    } else {
+      console.log('[LOG] All saved strings:');
+      rows.forEach(row => {
+        console.log(`  ID: ${row.id}, Value: "${row.value}", Created: ${row.created_at}`);
+      });
+    }
+  } catch (err) {
+    console.error('[LOG] Failed to retrieve saved strings:', err);
+  }
+}
+
 /* ================= START ================= */
 
 (async () => {
@@ -308,12 +344,38 @@ class PluginManager {
   plugins.loadAll();
 
   const PORT = process.env.PORT || 8080;
-  const wss = new WebSocket.Server({ port: PORT });
+
+  // Create HTTP server
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    // Handle the specific endpoint: /save-string?twm=value
+    if (url.pathname === '/save-string' && url.searchParams.has('twm')) {
+      const stringToSave = url.searchParams.get('twm');
+      const success = await saveStringToDB(stringToSave);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: success ? "true" : "false" }));
+      return;
+    }
+    // For any other path, return 404
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  });
+
+  // Create WebSocket server attached to the same HTTP server
+  const wss = new WebSocket.Server({ server });
 
   world.wss = wss;
   api.attachWSS(wss);
 
-  console.log('Server started');
+  // Start the server
+  server.listen(PORT, () => {
+    console.log(`HTTP and WebSocket server started on port ${PORT}`);
+  });
+
+  // Every 20 minutes, log all saved strings
+  setInterval(async () => {
+    await logAllSavedStrings();
+  }, 20 * 60 * 1000); // 20 minutes
 
   wss.on('connection', ws => {
 
@@ -402,12 +464,12 @@ class PluginManager {
     });
   });
 
-  // Автосохранение мира и всех игроков раз в минуту
+  // Auto-save world and all players every minute
   setInterval(async () => {
     api.emit('tick', {});
     await world.save();
 
-    // Сохраняем всех текущих игроков (состояние на момент таймера)
+    // Save all current players (state at timer moment)
     for (const [id, p] of world.players) {
       await world.savePlayer(id, p);
     }
