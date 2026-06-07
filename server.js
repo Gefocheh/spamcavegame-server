@@ -299,11 +299,16 @@ class PluginManager {
   }
 }
 
-/* ================= HTTP SERVER & STRING SAVING ================= */
-
-// Helper to set CORS headers on response
-function setCORSHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function setCORSHeaders(res, req) {
+  const origin = req.headers.origin;
+  if (origin) {
+    // Echo the requesting origin (allows credentials if needed)
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    // Fallback to wildcard (no credentials)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
@@ -356,25 +361,36 @@ async function logAllSavedStrings() {
   const server = http.createServer(async (req, res) => {
     // Handle preflight OPTIONS request
     if (req.method === 'OPTIONS') {
-      setCORSHeaders(res);
+      setCORSHeaders(res, req);
       res.writeHead(204);
       res.end();
       return;
     }
 
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    // Handle the specific endpoint: /save-string?twm=value
-    if (req.method === 'GET' && url.pathname === '/save-string' && url.searchParams.has('twm')) {
-      const stringToSave = url.searchParams.get('twm');
-      const success = await saveStringToDB(stringToSave);
-      setCORSHeaders(res);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: success ? "true" : "false" }));
-      return;
+    // Only handle GET requests for the save endpoint
+    if (req.method === 'GET') {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      if (url.pathname === '/save-string' && url.searchParams.has('twm')) {
+        try {
+          const stringToSave = url.searchParams.get('twm');
+          console.log(`[HTTP] Received string: "${stringToSave}"`);
+          const success = await saveStringToDB(stringToSave);
+          setCORSHeaders(res, req);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: success ? "true" : "false" }));
+          return;
+        } catch (err) {
+          console.error('[HTTP] Error processing /save-string:', err);
+          setCORSHeaders(res, req);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: "false", error: "Internal server error" }));
+          return;
+        }
+      }
     }
 
-    // For any other path, return 404 with CORS headers (optional)
-    setCORSHeaders(res);
+    // For any other path or method, return 404 with CORS headers
+    setCORSHeaders(res, req);
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');
   });
@@ -395,14 +411,12 @@ async function logAllSavedStrings() {
     await logAllSavedStrings();
   }, 20 * 60 * 1000); // 20 minutes
 
+  // WebSocket connection handling (unchanged, same as before)
   wss.on('connection', ws => {
-
     if (world.players.size >= MAX_PLAYERS) {
       ws.close(); return;
     }
-
     const { id, player } = world.addPlayer(ws);
-
     api.emit('playerJoin', { playerId: id });
     console.log(`Player joined: ${id} (${player.nickname})`);
     ws.send(JSON.stringify({
@@ -411,70 +425,51 @@ async function logAllSavedStrings() {
       players: [...world.players.entries()],
       playerId: id
     }));
-
     world.broadcast({ type: 'playerJoined', playerId: id, ...player }, id);
-
     ws.on('message', async raw => {
       if (!rateLimit(ws)) return;
-
       let data;
       try { data = JSON.parse(raw); } catch { return; }
-
       if (data.clientVersion && data.clientVersion !== CLIENT_VERSION) {
         ws.close(); return;
       }
-
       if (data.type === 'playerUpdate') {
-        if (
-          isNumber(data.x) && isNumber(data.y) && isNumber(data.z) &&
-          isNumber(data.rotationY) && isNumber(data.rotationX)
-        ) {
+        if (isNumber(data.x) && isNumber(data.y) && isNumber(data.z) &&
+            isNumber(data.rotationY) && isNumber(data.rotationX)) {
           world.movePlayer(ws, data);
         }
       }
-
       if (data.type === 'blockPlace' || data.type === 'blockBreak') {
         const p = world.players.get(ws.id);
         if (!p) return;
-
         if (dist(p, data) > BLOCK_INTERACT_DIST) return;
-
         const evt = {
           playerId: ws.id,
           x: data.x, y: data.y, z: data.z,
           blockType: data.blockType
         };
-
         const ok = api.emit(
           data.type === 'blockPlace' ? 'blockPlace' : 'blockBreak',
           evt
         );
-
         if (!ok) return;
-
         world.setBlock(
           data.x, data.y, data.z,
           data.type === 'blockPlace' ? data.blockType : null
         );
       }
-
       if (data.type === 'chat') {
         const text = escapeHTML(data.text).slice(0, 200);
-
         if (text.startsWith('/')) {
           const [name, ...args] = text.slice(1).split(/\s+/);
           const cmd = api.commands.get(name);
-
           if (cmd) cmd.handler(ws.id, args);
           return;
         }
-
         if (api.emit('chat', { playerId: ws.id, text }) === false) return;
-
         world.broadcast({ type: 'chat', playerId: ws.id, text });
       }
     });
-
     ws.on('close', async () => {
       api.emit('playerLeave', { playerId: id });
       console.log(`Player left: ${id}`);
@@ -486,8 +481,6 @@ async function logAllSavedStrings() {
   setInterval(async () => {
     api.emit('tick', {});
     await world.save();
-
-    // Save all current players (state at timer moment)
     for (const [id, p] of world.players) {
       await world.savePlayer(id, p);
     }
