@@ -2,7 +2,6 @@
 
 Copyright (c) 2026 Gefocheh
 
-... (full license text) ...
 */
 
 const WebSocket = require('ws');
