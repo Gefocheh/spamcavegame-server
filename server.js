@@ -421,6 +421,7 @@ wss.on('connection', ws => {
     if (data.type === 'auth') {
       const authInfo = data.info;
       if (authInfo.version != '0.3.0') {
+        console.log("NETWORK newer client!!")
         ws.send(JSON.stringify({type: 'chat', playerId: 'SERVER', text: 'Obsolete server, recomennded to downgrade client.',}))
       }
     }
