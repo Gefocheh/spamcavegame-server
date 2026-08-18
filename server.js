@@ -93,6 +93,7 @@ class ServerWorld {
   }
 
   removePlayer(id) {
+    console.log("player discornect")
     if (!this.players.has(id)) return;
     this.players.delete(id);
     this.broadcast({ type: 'playerLeft', playerId: id });
@@ -142,14 +143,15 @@ class ServerWorld {
   /* ===== SAVE / LOAD ===== */
 
   save() {
-//nah 
-console.log("no saving lol")
+    //nah 
+    console.log("no saving lol")
   }
 
   load() {
       this.generateDefaultWorld(25);
       return
   }
+
 
   generateDefaultWorld(size) {
     console.log('[WORLD] generating');
@@ -412,6 +414,15 @@ wss.on('connection', ws => {
 
       if (api.emit('chat', { playerId: ws.id, text }) === false) return;
       world.broadcast({ type: 'chat', playerId: ws.id, text });
+    }
+
+
+
+    if (data.type === 'auth') {
+      const authInfo = data.info;
+      if (authInfo.version != '0.3.0') {
+        ws.send(JSON.stringify({type: 'chat', playerId: 'SERVER', text: 'Obsolete server, recomennded to downgrade client.',}))
+      }
     }
   });
 
