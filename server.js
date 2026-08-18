@@ -88,7 +88,7 @@ class ServerWorld {
     ws.id = id;
     ws.nickname = id;
     this.players.set(id, player);
-
+    console.log("newplayer " + player.nickname)
     return { id, player };
   }
 
