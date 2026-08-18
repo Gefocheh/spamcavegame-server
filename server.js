@@ -437,6 +437,6 @@ wss.on('connection', ws => {
 
 setInterval(() => {
   api.emit('tick', {});
-  world.save();
+ // world.save();
 
 }, 60000);
