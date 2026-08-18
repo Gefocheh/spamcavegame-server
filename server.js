@@ -4,7 +4,7 @@ const path = require('path');
 
 /* ================= CONFIG ================= */
 
-const CLIENT_VERSION = '0.3.0';
+const CLIENT_VERSION = '0.3.1';
 const SAVE_FILE = 'world.json';
 
 const MAX_PLAYERS = 19;
@@ -142,29 +142,13 @@ class ServerWorld {
   /* ===== SAVE / LOAD ===== */
 
   save() {
-    const data = {
-      blocks: [...this.blocks.values()]
-    };
-    fs.writeFileSync(SAVE_FILE, JSON.stringify(data));
-    console.log('[SAVE] world saved');
+//nah 
+console.log("no saving lol")
   }
 
   load() {
-    if (!fs.existsSync(SAVE_FILE)) {
       this.generateDefaultWorld(25);
-      return;
-    }
-
-    try {
-      const data = JSON.parse(fs.readFileSync(SAVE_FILE));
-      this.blocks.clear();
-      (data.blocks || []).forEach(b =>
-        this.blocks.set(this.key(b.x, b.y, b.z), b)
-      );
-    } catch (e) {
-      console.error('World load error, regenerating', e);
-      this.generateDefaultWorld(25);
-    }
+      return
   }
 
   generateDefaultWorld(size) {
@@ -328,7 +312,6 @@ class PluginManager {
       });
   }
 }
-// Лишняя функция loadAll удалена
 
 /* ================= SERVER START ================= */
 
