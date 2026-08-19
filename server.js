@@ -219,7 +219,7 @@ class PluginAPI {
           if (c.id === id && c.readyState === WebSocket.OPEN) {
             c.send(JSON.stringify({
               type: 'chat',
-              playerId: 'SYSTEM',
+              playerId: 'SERVER',
               text: String(text)
             }));
           }
@@ -345,14 +345,14 @@ wss.on('connection', ws => {
     let data;
     try { data = JSON.parse(raw); } catch { return; }
 
-    if (data.clientVersion && data.clientVersion !== CLIENT_VERSION) {
+    /*if (data.clientVersion && data.clientVersion !== CLIENT_VERSION) {
       ws.send(JSON.stringify({
         type: 'versionMismatch',
         serverVersion: CLIENT_VERSION
       }));
       ws.close();
       return;
-    }
+    }*/
 
     if (data.type === 'playerUpdate') {
       if (
