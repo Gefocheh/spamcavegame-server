@@ -32,7 +32,7 @@ module.exports.init = api => {
       const playerObjectsArray = api.players.getAll()
       var playerList = []
       for (let i = 0; i <= playerObjectsArray.length; i ++) {
-        playerList[i] = playerObjectsArray[i].nickname;
+        playerList[i] = playerObjectsArray[i].player.nickname;
       }
       api.players.sendMessage("online players: " + playerList)
     }
