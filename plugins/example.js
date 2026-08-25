@@ -30,7 +30,7 @@ module.exports.init = api => {
     description: 'list all players currently connected to server',
     handler(playerId) {
       const playerObjectsArray = api.players.getAll()
-      var playerList
+      var playerList = []
       for (let i = 0; i <= playerObjectsArray.length; i ++) {
         playerList[i] = playerObjectsArray[i].nickname;
       }
