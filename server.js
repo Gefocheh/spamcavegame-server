@@ -233,6 +233,19 @@ class PluginAPI {
             c.close();
           }
         }
+      },
+      correctPos: (id, x, y, z) => {
+        if (!this._wss) return;
+        for (const c of this._wss.clients) {
+          if (c.id === id && c.readyState === WebSocket.OPEN) {
+            c.send(JSON.stringify({
+              type: 'positionCorrection',
+              x: x,
+              y: y,
+              z: z
+            }));
+          }
+        }
       }
     };
 
@@ -423,7 +436,7 @@ wss.on('connection', ws => {
       if (authInfo.version != '0.3.0') {
         console.log("NETWORK newer client!!")
         ws.send(JSON.stringify({type: 'chat', playerId: 'SERVER', text: 'Obsolete server, recomennded to downgrade client.',}))
-        ws.send(JSON.stringify({type: 'serverInfo', info: {version: '0.3.1'}}}))
+        ws.send(JSON.stringify({type: 'serverInfo', info: {version: '0.3.1'},}));
       }
     }
   });
