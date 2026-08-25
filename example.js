@@ -4,7 +4,7 @@ module.exports.init = api => {
     name: 'spawn',
     description: 'Teleport to spawn',
     handler(playerId) {
-      api.players.correctPos(playerId, 0, 5, 0)
+      api.players.correctPos(playerId, 0, 1, 0)
 
       api.players.sendMessage(playerId, 'Teleported to spawn');
     }

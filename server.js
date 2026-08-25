@@ -240,9 +240,9 @@ class PluginAPI {
           if (c.id === id && c.readyState === WebSocket.OPEN) {
             c.send(JSON.stringify({
               type: 'positionCorrection',
-              x: x,
-              y: y,
-              z: z
+              x: Number(x),
+              y: Number(y),
+              z: Number(z)
             }));
           }
         }
