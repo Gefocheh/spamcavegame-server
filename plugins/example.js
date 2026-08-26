@@ -31,8 +31,9 @@ module.exports.init = api => {
     handler(playerId) {
       const playerObjectsArray = api.players.getAll()
       var playerList = []
-      for (let i = 0; i <= playerObjectsArray.length; i ++) {
-        playerList[i] = playerObjectsArray[i][0];
+      for (let i = 0; i < playerObjectsArray.length; i ++) {
+        let pens = playerObjectsArray[i];
+        playerList[i] = pens
       }
       api.players.sendMessage("online players: " + playerList.join(", "))
     }
