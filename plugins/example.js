@@ -33,7 +33,7 @@ module.exports.init = api => {
       var playerList = []
       for (let i = 0; i < playerObjectsArray.length; i ++) {
         let pens = playerObjectsArray[i];
-        playerList[i] = pens
+        playerList[i] = pens[0]
       }
       api.players.sendMessage(playerId, "online players: " + playerList.join(", "))
     }
