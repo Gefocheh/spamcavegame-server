@@ -35,7 +35,7 @@ module.exports.init = api => {
         let pens = playerObjectsArray[i];
         playerList[i] = pens
       }
-      api.players.sendMessage("online players: " + playerList.join(", "))
+      api.players.sendMessage(playerId, "online players: " + playerList.join(", "))
     }
   })
 
