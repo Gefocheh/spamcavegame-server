@@ -79,7 +79,7 @@ class ServerWorld {
   addPlayer(ws) {
     const id = 'p' + Math.floor(Math.random() * 100000);
     const player = {
-      x: 0, y: 5, z: 0,
+      x: 0, y: 1, z: 0,
       rotationY: 0,
       rotationX: 0,
       nickname: id
