@@ -82,7 +82,8 @@ class ServerWorld {
       x: 0, y: 1, z: 0,
       rotationY: 0,
       rotationX: 0,
-      nickname: id
+      nickname: id,
+      health: 1993
     };
 
     ws.id = id;
@@ -341,7 +342,7 @@ const PORT = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port: PORT });
 world.wss = wss;
 api.attachWSS(wss);
-
+var sockets = new Map()
 console.log('Server started on ws://localhost:8080');
 
 /* ================= CONNECTION ================= */
@@ -351,7 +352,6 @@ wss.on('connection', ws => {
     ws.close();
     return;
   }
-
   ws.on('message', raw => {
     if (!rateLimit(ws)) return;
 
@@ -428,7 +428,16 @@ wss.on('connection', ws => {
       if (api.emit('chat', { playerId: ws.id, text }) === false) return;
       world.broadcast({ type: 'chat', playerId: ws.id, text });
     }
-
+    
+    if (data.type === 'damage') {
+      const target = sockets.get(data.playerId)
+      console.log("trying to damage the idiot " + data.playerId)
+      if (target /*&& target.readyState === target.OPEN*/) {
+        console.log("succeeding to damage the idiot")
+        target.send(JSON.stringify({type: 'damage', damage: 100}));
+        console.log("succeeded to damage the idiot")
+      }
+    }
 
 
     if (data.type === 'auth') {
@@ -442,6 +451,8 @@ wss.on('connection', ws => {
   });
 
   const { id, player } = world.addPlayer(ws);
+  sockets.set(id, ws)
+  console.log("playerJoin " + id)
   api.emit('playerJoin', { playerId: id });
 
   ws.send(JSON.stringify({
