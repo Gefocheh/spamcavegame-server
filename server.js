@@ -8,7 +8,7 @@ const CLIENT_VERSION = 'bdea-ng';
 const SAVE_FILE = 'world.json';
 
 const MAX_PLAYERS = 19;
-const MAX_BLOCKS = 200_000;
+const MAX_BLOCKS = 200_000 || process.env.BLOCKS;
 const MAX_MOVE_DIST = 10;
 const BLOCK_INTERACT_DIST = 6;
 const MSG_LIMIT = 60;      // messages
@@ -17,12 +17,12 @@ const MSG_INTERVAL = 1000; // ms
 /* creatures + mangos */
 const MAX_ENTITIES = 100;
 const CREATURE_HEALTH = 1500;
-const CREATURE_SPAWN_COUNT = 5;
+const CREATURE_SPAWN_COUNT = 5 || process.env.CREATURE_SPAWN_COUNT;
 const CREATURE_SPAWN_INTERVAL_MS = 5 * 60 * 1000;   // 5 minutes
-const CREATURE_ATTACK_DAMAGE = 100;
-const CREATURE_ATTACK_INTERVAL_MS = 1000;           // 100 dmg / second
-const CREATURE_ATTACK_RANGE = 2;
-const CREATURE_CHASE_RANGE = 6;
+const CREATURE_ATTACK_DAMAGE = 100 || process.env.CREATURE_ATTACK_DAMAGE;
+const CREATURE_ATTACK_INTERVAL_MS = 1000 || process.env.CREATURE_ATTACK_INTERVAL;           // 100 dmg / second
+const CREATURE_ATTACK_RANGE = 2 || process.env.CREATURE_ATTACK_RANGE;
+const CREATURE_CHASE_RANGE = 6 || process.env.CREATURE_CHASE_RANGE;
 const CREATURE_WANDER_DIST = 5;
 const CREATURE_WANDER_INTERVAL_MS = 10 * 1000;      // 10 seconds
 const CREATURE_TICK_MS = 100;
@@ -213,7 +213,7 @@ class ServerWorld {
   }
 
   load() {
-    this.generateDefaultWorld(25);
+    this.generateDefaultWorld(100);
   }
 
   generateDefaultWorld(size) {
